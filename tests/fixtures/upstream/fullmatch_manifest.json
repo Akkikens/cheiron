@@ -1,0 +1,76 @@
+{
+  "recorded_at": "2026-08-16T18:59:00Z",
+  "api_version": "2.0.5",
+  "data_timestamp": "2026-08-14T09:00:05",
+  "base_url": "https://clinicaltrials.gov/api/v2/studies",
+  "shared_params": {
+    "countTotal": "true",
+    "pageSize": "1",
+    "fields": "NCTId"
+  },
+  "note": "Recorded by T01 Part A to settle COVER vs COVERAGE. COVERAGE is the spelling used everywhere in the codebase (FULL_MATCH_OP).",
+  "cases": [
+    {
+      "fixture": "fullmatch_coverage_full_name.json",
+      "filter.advanced": "AREA[LeadSponsorName]COVERAGE[FullMatch]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 200,
+      "total_count": 1841,
+      "meaning": "Canonical exact-match count. This is the number A2 requires."
+    },
+    {
+      "fixture": "fullmatch_cover_alias_full_name.json",
+      "filter.advanced": "AREA[LeadSponsorName]COVER[FullMatch]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 200,
+      "total_count": 1841,
+      "meaning": "COVER is an exact grammar alias of COVERAGE, not a prefix match. Identical result."
+    },
+    {
+      "fixture": "fullmatch_no_operator_substring.json",
+      "filter.advanced": "AREA[LeadSponsorName]\"Merck\"",
+      "http_status": 200,
+      "total_count": 2733,
+      "meaning": "Substring match: inflated by Merck KGaA and friends. A2's wrong answer."
+    },
+    {
+      "fixture": "fullmatch_no_operator_full_name.json",
+      "filter.advanced": "AREA[LeadSponsorName]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 200,
+      "total_count": 2170,
+      "meaning": "The full name without FullMatch is still wrong (2170, not 1841) — the operator, not the phrase, is what makes it exact."
+    },
+    {
+      "fixture": "fullmatch_missing_area_prefix.json",
+      "filter.advanced": "COVERAGE[FullMatch]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 200,
+      "total_count": 4591,
+      "meaning": "Dropping AREA[LeadSponsorName] searches all default areas and returns 4591 with HTTP 200. The AREA[] prefix is mandatory."
+    },
+    {
+      "fixture": "fullmatch_coverage_bare_token.json",
+      "filter.advanced": "AREA[LeadSponsorName]COVERAGE[FullMatch]Merck",
+      "http_status": 200,
+      "total_count": 0,
+      "meaning": "FullMatch against an unquoted partial token is a legitimate 0 (no sponsor is named exactly \"Merck\"), returned with HTTP 200. Confirmation of a discovered label must pass the label verbatim."
+    }
+  ],
+  "rejected_spellings": [
+    {
+      "filter.advanced": "AREA[LeadSponsorName]COV[FullMatch]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 400,
+      "content_type": "text/plain",
+      "body_prefix": "Error parsing query in advanced filter: mismatched input '[' expecting {<EOF>, '(', ',', 'NOT', 'AND', 'OR', 'SEARCH', 'AREA', 'RANGE', ...}"
+    },
+    {
+      "filter.advanced": "AREA[LeadSponsorName]COVERAGEX[FullMatch]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 400,
+      "content_type": "text/plain",
+      "body_prefix": "Error parsing query in advanced filter: mismatched input '[' expecting {<EOF>, '(', ',', 'NOT', 'AND', 'OR', 'SEARCH', 'AREA', 'RANGE', ...}"
+    },
+    {
+      "filter.advanced": "AREA[LeadSponsorName]COVERAGE[FullMatc]\"Merck Sharp & Dohme LLC\"",
+      "http_status": 400,
+      "content_type": "text/plain",
+      "body_prefix": "Error parsing query in advanced filter: Invalid coverage: FullMatc"
+    }
+  ]
+}
