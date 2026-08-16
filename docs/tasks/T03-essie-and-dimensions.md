@@ -29,6 +29,10 @@ class Essie:
     def and_(*exprs: str) -> str                          # parenthesised
     @staticmethod
     def or_(*exprs: str) -> str
+    @staticmethod
+    def not_(expr: str) -> str                            # completes the boolean grammar
+    @staticmethod
+    def phrase(text: str) -> str                          # bare quoted phrase
 ```
 
 Rules:

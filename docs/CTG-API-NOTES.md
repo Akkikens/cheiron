@@ -58,24 +58,47 @@ used anywhere in the codebase.
 
 ### Verified Essie constructs
 
-| Construct | Example | Count |
-|---|---|---|
-| Boolean + grouping | `(head OR neck) AND pain NOT cancer` | 2,075 |
-| Phrase | `"breast cancer"` | 16,538 |
-| Field match | `AREA[Phase]PHASE3` | 49,659 |
-| Date range | `AREA[StartDate]RANGE[2020-01-01,2020-12-31]` | 33,574 |
-| Numeric range | `AREA[EnrollmentCount]RANGE[500,MAX]` | 66,859 |
-| Has-value | `AREA[ResultsFirstPostDate]RANGE[MIN,MAX]` | 79,695 |
-| **Absent field** | `AREA[Phase]MISSING` | 141,903 |
-| Partial date | `AREA[StartDate]2022` | 37,619 |
-| **Exact field match** | `AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` | 1,841 |
-| List size | `AREA[Phase:size]2` | 24,549 |
-| Location scoping | `SEARCH[Location](AREA[LocationCity]Boston AND AREA[LocationStatus]RECRUITING)` | 2,597 |
-| Distance | `AREA[LocationGeoPoint]DISTANCE[42.36,-71.06,50mi]` | 29,070 |
-| Whole corpus | `ALL` | 598,690 |
+Counts are `filter.advanced` unless the row says otherwise. **The parameter is part of the
+measurement**: an unscoped expression is evaluated against that parameter's search areas, so
+the same syntax returns a different number under `query.cond` than under `filter.advanced`.
+The two free-text rows below were originally recorded against `query.cond` and are labelled
+accordingly (re-verified 2026-08-16).
+
+| Construct | Example | Parameter | Count |
+|---|---|---|---|
+| Boolean + grouping | `(head OR neck) AND pain NOT cancer` | `query.cond` | 2,075 |
+| ” | ” | `filter.advanced` | 9,964 |
+| Phrase | `"breast cancer"` | `query.cond` | 16,538 |
+| ” | ” | `filter.advanced` | 17,819 |
+| Field match | `AREA[Phase]PHASE3` | `filter.advanced` | 49,659 |
+| Date range | `AREA[StartDate]RANGE[2020-01-01,2020-12-31]` | `filter.advanced` | 33,574 |
+| Numeric range | `AREA[EnrollmentCount]RANGE[500,MAX]` | `filter.advanced` | 66,859 |
+| Has-value | `AREA[ResultsFirstPostDate]RANGE[MIN,MAX]` | `filter.advanced` | 79,695 |
+| **Absent field** | `AREA[Phase]MISSING` | `filter.advanced` | 141,903 |
+| Partial date | `AREA[StartDate]2022` | `filter.advanced` | 37,619 |
+| **Exact field match** | `AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` | `filter.advanced` | 1,841 |
+| List size | `AREA[Phase:size]2` | `filter.advanced` | 24,549 |
+| Location scoping | `SEARCH[Location](AREA[LocationCity]Boston AND AREA[LocationStatus]RECRUITING)` | `filter.advanced` | 2,597 |
+| Distance | `AREA[LocationGeoPoint]DISTANCE[42.36,-71.06,50mi]` | `filter.advanced` | 29,070 |
+| Whole corpus | `ALL` | `filter.advanced` | 598,690 |
 
 Precedence: terms → `NOT`/context ops → `AND` → `OR`. Parentheses override. Escape a
 literal operator with a backslash (`\MISSING`).
+
+**Operator keywords are case-sensitive.** `(head or neck) and pain not cancer` returns
+**486**, not 9,964 — lowercase `and`/`or`/`not` are ordinary search terms, not operators.
+Escaping is therefore only required for the exact uppercase spellings (plus `FullMatch`).
+
+**Over-escaping is harmless.** A backslash on a non-operator word is ignored:
+`COVERAGE[FullMatch]"\Merck Sharp & Dohme LLC"` and
+`COVERAGE[FullMatch]"Merck \Sharp & Dohme \LLC"` both still return **1,841**. So the escaper
+can be conservative without corrupting matches.
+
+**Unescaped user text is a live injection.** With the quote left unescaped,
+`AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck" OR AREA[Phase]PHASE3` returns **49,659** —
+the injected `AREA[Phase]PHASE3` clause simply executes. Escaped
+(`…FullMatch]"Merck\" OR AREA[Phase]PHASE3"`) it returns **0**, which is the truthful answer:
+no sponsor is named that.
 
 ⚠️ `DISTANCE(...)` with **parentheses** leaks a raw Java parser exception. Use
 `DISTANCE[...]` (square brackets) inside Essie; `filter.geo` uses `distance(...)` with
@@ -203,6 +226,18 @@ of the parameter set that produced it and refuse a mismatch.
    "Novartis Pharmaceuticals". Only `class` (INDUSTRY/NIH/OTHER/…) is reliably categorical.
 6. **`UNKNOWN` status is 95,740 studies (16%)** — trials that stopped updating. Not
    active, not completed. Must be its own bucket.
+
+   Those studies are not silent about what they were doing, though: `LastKnownStatus` is
+   populated for **exactly** that cohort and no one else. Verified 2026-08-16 —
+   `AREA[LastKnownStatus]MISSING` = 502,950 of 598,690, so 95,740 carry one, and
+   `AREA[OverallStatus]UNKNOWN AND NOT AREA[LastKnownStatus]MISSING` = 95,740 confirms the
+   overlap is total. Their last self-reported state: `RECRUITING` 54,030,
+   `NOT_YET_RECRUITING` 23,607, `ACTIVE_NOT_RECRUITING` 14,458, `COMPLETED` **0** — a
+   completed trial has no reason to lapse into `UNKNOWN`. So the 16% is dominated by trials
+   that were recruiting or had not yet started when they went dark.
+
+   Not a SPEC §5.1 dimension and not implemented. Recorded because it is the honest
+   characterisation of a bucket that most tooling drops.
 7. `dateStruct.type` (ACTUAL vs ESTIMATED) is frequently absent; enrollment `type` absent
    on 17,131.
 8. Very old records (e.g. NCT00000102) have empty `statusModule`/`designModule`.

@@ -26,6 +26,27 @@ class BudgetExhausted(Exception): ...
 budget and what it was spent on. Checking the deadline before each fan-out wave, not just
 at the end.
 
+## Base filter construction — `query.*` and `filter.advanced` are not interchangeable
+
+T03 measured that the same free-text expression returns different counts depending on which
+parameter carries it: `(head OR neck) AND pain NOT cancer` is **2,075** under `query.cond`
+and **9,964** under `filter.advanced`; `"breast cancer"` is **16,538** vs **17,819**.
+`query.*` params are scoped to a search area and participate in relevance ranking;
+`filter.advanced` searches unscoped.
+
+So the base filter has two halves and they must never be merged:
+
+- **Free-text filters go to `query.*`**, per SPEC §2.1's mapping: `intervention` →
+  `query.intr`, `condition` → `query.cond`, `sponsor` → `query.lead`, `term` → `query.term`.
+- **Bucket predicates and structured constraints go to `filter.advanced`** via the Essie
+  builder (§5.3).
+
+This is not stylistic. SPEC A1's 2,927 total was measured with `query.intr=pembrolizumab`;
+moving that term into `filter.advanced` as an apparent simplification changes the total and
+silently invalidates every bucket beneath it. Add a test asserting `drug_name` lands in
+`query.intr` and never in `filter.advanced`, and that A1's preflight URL carries exactly
+that shape.
+
 ## `app/engine/preflight.py`
 
 `async def preflight(plan, dim, ctx) -> Preflight` where

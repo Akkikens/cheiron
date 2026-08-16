@@ -55,6 +55,21 @@ Replace the current two-liner. Sections, in this order:
    numbers; `aggFilters=phase:na` returns 0 silently, which is why Essie is used everywhere;
    `COVERAGE[FullMatch]` turns 2,733 into the correct 1,841; the LLM is kept out of the data
    path entirely.
+
+   Lead with the one finding that generalises: **identical syntax, different scope, plausible
+   wrong number** — the failure mode this API punishes. Three instances, all caught by
+   verifying against live counts rather than reading docs: a missing `AREA[]` prefix returns
+   4,591 instead of 1,841 at HTTP 200; the same boolean expression returns 2,075 under
+   `query.cond` and 9,964 under `filter.advanced`; `AREA[LeadSponsorName]"Merck"` substring-
+   matches to 2,733. None of the three errors, and none is visible in the response.
+
+   Then the `UNKNOWN` cohort, as the payoff for reading the data: 95,740 studies (16%) are
+   `UNKNOWN`, and `LastKnownStatus` is populated for exactly that cohort and nobody else
+   (`MISSING` = 502,950 of 598,690; `UNKNOWN AND NOT MISSING` = 95,740, so the overlap is
+   total). Their last self-reported state was `RECRUITING` 54,030, `NOT_YET_RECRUITING`
+   23,607, `ACTIVE_NOT_RECRUITING` 14,458 — and `COMPLETED` **zero**, because a completed
+   trial has no reason to lapse. The 16% every dashboard drops is dominated by trials that
+   were recruiting or hadn't started when they went dark.
 6. **Tests** — `pytest -q`, what the acceptance suite pins, and how to re-record fixtures.
 7. **What I'd do with more time** — honest and specific. Anything cut per BUILD-PLAN §3,
    plus: a shared cache for horizontal scale, `postFilter` for ranking-aware series,
