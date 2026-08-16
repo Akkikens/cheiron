@@ -33,6 +33,14 @@ Checks:
    `group_by.dimension == "country"`; `intent=comparison` requires `len(series) >= 2`;
    `len(series) >= 2` requires `intent=comparison`; `intent=scatter` requires
    `secondary_group_by`; `bin` only on temporal or quantitative dimensions.
+   **`intent=scatter` and `intent=histogram` are rejected outright** with
+   `unplannable_query`: both need a quantitative `group_by` dimension, and SPEC §5.1's
+   registry defines none — every dimension there is nominal, ordinal, or temporal. The
+   message must name the real reason and the real blocker, e.g. *"scatter requires a
+   quantitative dimension; none is defined. Enrollment is the only quantitative field and is
+   computable solely in complete_records mode (≤2000 studies)."* Rejecting is mandatory
+   because these intents **are** in the plan schema, so from T09 the model can emit them —
+   and falling through to the `table` branch would silently answer a different question.
 4. `start_year <= end_year`; both within 1900–2100.
 5. `interpretation` non-empty, ≤300 chars, and contains **no digits that aren't a year** —
    cheap guard against the model smuggling a count into prose (SPEC §1).

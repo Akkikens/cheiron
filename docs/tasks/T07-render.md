@@ -28,6 +28,15 @@ type plus any warnings it generated. A **deterministic function** of
 `viz_hint` breaks **ties only** and is discarded when it violates a safety rule — record
 the discard in `warnings` so the caller learns why they didn't get what they asked for.
 
+**`histogram` and `scatter_plot` are unreachable by construction, and that is asserted, not
+assumed.** Both rows require a quantitative dimension; SPEC §5.1's registry defines none, so
+T05's validation rejects those intents before the registry is ever consulted. Keep both rows
+in the table — they are the contract, and they become live the moment a quantitative
+dimension is added — but add a test that iterates every `(intent, cardinality, series,
+partition, mode)` combination the registry can actually receive and asserts neither type is
+ever returned. If someone later adds an `enrollment_count` dimension, that test fails and
+tells them the two branches now need real coverage.
+
 **Safety rules, non-overridable (SPEC §6.1):**
 1. No pie / donut / 100%-stacked on a `partition=False` dimension.
 2. No `share_of_total` field emitted when `groupby_semantics == "overlapping"`.
@@ -79,6 +88,11 @@ validate → plan → preflight → aggregate → coverage → select_chart → 
   `AnalysisPlan` (SPEC §2.2).
 - `CheironError` → SPEC §4.5's envelope via the T01 handlers. `NotImplementedError` from an
   unlanded mode → `422 unplannable_query` with an honest explanation.
+- **Planning failure is `unplannable_query`, never `invalid_request`** (both are 422, so the
+  distinction is only visible in `code`). The request was well-formed; it's the question that
+  couldn't be served. `invalid_request` is reserved for schema and field validation — a caller
+  filtering on `code` to decide whether to fix their payload or rephrase their question needs
+  these separated. T05 records this in `validate_plan`'s docstring; honour it at the route.
 
 ## Tests
 

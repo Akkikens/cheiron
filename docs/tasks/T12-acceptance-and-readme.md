@@ -72,7 +72,11 @@ Replace the current two-liner. Sections, in this order:
    were recruiting or hadn't started when they went dark.
 6. **Tests** — `pytest -q`, what the acceptance suite pins, and how to re-record fixtures.
 7. **What I'd do with more time** — honest and specific. Anything cut per BUILD-PLAN §3,
-   plus: a shared cache for horizontal scale, `postFilter` for ranking-aware series,
+   plus: an `enrollment_count` dimension, which is the single change that unlocks SPEC §6.1's
+   `histogram` and `scatter_plot` rows — currently unreachable because §5.1's registry
+   defines no quantitative dimension, and enrollment needs record-mode paging plus
+   winsorizing to be plottable at all (notes §6.4: missing on 7,133, `99999999` placeholders,
+   max 188,814,085); a shared cache for horizontal scale, `postFilter` for ranking-aware series,
    condition-hierarchy grouping (MeSH), and the `[unverified]` items in notes §4
    (rate limits, pageToken expiry).
 

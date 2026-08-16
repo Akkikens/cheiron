@@ -394,6 +394,15 @@ Deterministic function of `(intent, dimension cardinality, series count, partiti
 dimension. No `share_of_total` field emitted when `groupby_semantics=overlapping`. No
 `network_graph` outside `complete_records`.
 
+> **`scatter_plot` and `histogram` are specified but unreachable in v1.** Both require a
+> quantitative `group_by` dimension and §5.1's registry defines none — every dimension there
+> is nominal, ordinal, or temporal. `intent=scatter` and `intent=histogram` are therefore
+> rejected at plan validation with `unplannable_query` naming the reason, rather than
+> falling through to `table` and silently answering a different question. The rows stay in
+> this table because they become live the moment an `enrollment_count` dimension is added;
+> enrollment is the only quantitative field and is computable solely in `complete_records`
+> mode (§5.2), with the winsorizing §5.2 requires.
+
 ### 6.2 Encoding per type
 
 | Type | Channels |
