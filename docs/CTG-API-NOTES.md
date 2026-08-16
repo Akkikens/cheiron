@@ -85,6 +85,14 @@ accordingly (re-verified 2026-08-16).
 Precedence: terms → `NOT`/context ops → `AND` → `OR`. Parentheses override. Escape a
 literal operator with a backslash (`\MISSING`).
 
+**The parameter split is worth a third measurement, because this one is the whole of SPEC A1.**
+`query.intr=pembrolizumab` returns **2,927**; the same drug expressed as
+`filter.advanced=AREA[InterventionName]"pembrolizumab"` returns **2,531** (verified 2026-08-16,
+T06). Both are HTTP 200 and both look like "trials of pembrolizumab". Folding the drug into
+`filter.advanced` to keep the base filter in one parameter would move A1's total by 396 and
+invalidate every bucket beneath it, while the phase buckets themselves are unchanged — so the
+reconciliation would fail with no indication of which half was wrong.
+
 **Operator keywords are case-sensitive.** `(head or neck) and pain not cancer` returns
 **486**, not 9,964 — lowercase `and`/`or`/`not` are ordinary search terms, not operators.
 Escaping is therefore only required for the exact uppercase spellings (plus `FullMatch`).
@@ -238,11 +246,19 @@ of the parameter set that produced it and refuse a mismatch.
 
    Not a SPEC §5.1 dimension and not implemented. Recorded because it is the honest
    characterisation of a bucket that most tooling drops.
-7. `dateStruct.type` (ACTUAL vs ESTIMATED) is frequently absent; enrollment `type` absent
+7. **`COVERAGE[FullMatch]` is a no-op on `LocationCountry`, and that is field-specific rather
+   than reassuring.** Verified 2026-08-16 (T06): bare and exact forms return the same count for
+   every name tried — `Niger` 47 both ways against `Nigeria`'s separate 454, `Guinea` 46,
+   `Korea` 17,603, `Virgin Islands` 7, `United States` 194,442. The Merck defect in §2
+   (`LeadSponsorName` 2,733 vs 1,841) comes from sponsor values being long free text that
+   *embeds* other sponsors' names, not from open vocabularies as a category. So the exactness
+   hazard has to be assessed per field; `COVERAGE[FullMatch]` is still what SPEC §5.3 mandates
+   for country, and it cannot be looser than the alternative.
+8. `dateStruct.type` (ACTUAL vs ESTIMATED) is frequently absent; enrollment `type` absent
    on 17,131.
-8. Very old records (e.g. NCT00000102) have empty `statusModule`/`designModule`.
-9. `markupFormat=legacy` bodies contain CRLF; default `markdown` differs from the
-   pre-2025 classic pipeline. Geopoints now come from a different geo database.
+9. Very old records (e.g. NCT00000102) have empty `statusModule`/`designModule`.
+10. `markupFormat=legacy` bodies contain CRLF; default `markdown` differs from the
+    pre-2025 classic pipeline. Geopoints now come from a different geo database.
 
 ---
 

@@ -2,9 +2,15 @@
 
     python scripts/verify_upstream.py                # dataset version + headline counts
     python scripts/verify_upstream.py --predicates   # the whole notes §2 table, builder-built
+    python scripts/verify_upstream.py --a1           # SPEC A1 through the real engine, live
 
 `--predicates` sends **only** `Essie` output — no hand-written query strings — so a drift
 between the builder and `docs/CTG-API-NOTES.md` shows up here rather than in a chart.
+
+`--a1` runs `preflight` and the `server_counts` fan-out against live upstream and checks the
+reconciliation, not just the individual counts. Drift is tolerated here and nowhere else: the
+pinned test in `tests/unit/test_engine_counts.py` must not move when upstream refreshes, or it
+could no longer tell a data update from a broken predicate.
 """
 
 from __future__ import annotations
@@ -18,6 +24,13 @@ from app.config import Settings
 from app.ctg.client import CTGClient, CTGTransport
 from app.ctg.essie import Essie
 from app.ctg.vocab import Vocabulary
+from app.engine.context import new_context
+from app.engine.coverage import build_coverage
+from app.engine.dimensions import REGISTRY
+from app.engine.modes import counts
+from app.engine.preflight import preflight
+from app.models.plan import AnalysisPlan, GroupBy, Intent, Metric, StudyFilter
+from app.models.request import Options
 
 MERCK = "Merck Sharp & Dohme LLC"
 
@@ -82,6 +95,69 @@ async def run_predicates(client: CTGClient) -> int:
     return drifted
 
 
+async def run_a1(client: CTGClient, settings: Settings) -> int:
+    """SPEC A1 end-to-end at the engine layer: `query.intr=pembrolizumab` grouped by phase."""
+    version = await client.version()
+    vocabulary = await Vocabulary.load(client)
+    ctx = new_context(
+        client,
+        vocabulary,
+        Options(),
+        settings=settings,
+        data_timestamp=version.data_timestamp,
+    )
+
+    plan = AnalysisPlan(
+        intent=Intent.DISTRIBUTION,
+        filters=StudyFilter(intervention="pembrolizumab"),
+        group_by=GroupBy(dimension="phase"),
+        metric=Metric.STUDY_COUNT,
+        interpretation="Distribution of clinical trials studying pembrolizumab across phases.",
+    )
+    dim = REGISTRY["phase"]
+
+    pre = await preflight(plan, dim, ctx, threshold=settings.record_mode_threshold)
+    print(f"dataTimestamp  {version.data_timestamp}")
+    print(f"preflight      total {pre.total:,} -> mode {pre.mode}")
+    print(f"params         {pre.params}")
+    print()
+
+    bucketset = await counts.run(plan, dim, ctx, params=pre.params, total=pre.total)
+    coverage, warnings = build_coverage(bucketset, dim)
+
+    for bucket in bucketset.buckets:
+        print(f"  {bucket.key:<14} {bucket.label:<16} {int(bucket.value):>7,}")
+    print(f"  {'MISSING':<14} {'Not reported':<16} {bucketset.unclassified:>7,}")
+    print()
+
+    with_value = bucketset.total - bucketset.unclassified
+    overlap = bucketset.bucket_sum - with_value
+    recorded = {"total": 2_927, "unclassified": 169, "bucket_sum": 3_273, "overlap": 515}
+    actual = {
+        "total": bucketset.total,
+        "unclassified": bucketset.unclassified,
+        "bucket_sum": bucketset.bucket_sum,
+        "overlap": overlap,
+    }
+
+    drifted = 0
+    for key, expected in recorded.items():
+        delta = actual[key] - expected
+        drifted += delta != 0
+        marker = "ok   " if delta == 0 else "DRIFT"
+        print(f"{marker} {key:<14} {actual[key]:>9,}  (SPEC A1 {expected:>7,}  {delta:+,})")
+
+    # The identity, not the individual numbers: this must hold at any dataset revision.
+    assert bucketset.bucket_sum - with_value == overlap
+    print()
+    print(f"semantics      {coverage.groupby_semantics}")
+    print(f"overlap_note   {coverage.overlap_note}")
+    if warnings:
+        print(f"warnings       {warnings}")
+    print(f"upstream spend {ctx.spent} requests")
+    return drifted
+
+
 async def run_headline(client: CTGClient) -> int:
     version = await client.version()
     print(f"apiVersion     {version.api_version}")
@@ -109,13 +185,23 @@ async def main() -> int:
         action="store_true",
         help="verify every builder-expressible predicate in notes §2",
     )
+    parser.add_argument(
+        "--a1",
+        action="store_true",
+        help="run SPEC A1 through preflight and the count fan-out against live upstream",
+    )
     args = parser.parse_args()
 
     settings = Settings(_env_file=None, llm_enabled=False)
 
     async with CTGTransport(settings) as transport:
         client = CTGClient(transport)
-        drifted = await (run_predicates(client) if args.predicates else run_headline(client))
+        if args.a1:
+            drifted = await run_a1(client, settings)
+        elif args.predicates:
+            drifted = await run_predicates(client)
+        else:
+            drifted = await run_headline(client)
 
     print()
     if drifted:

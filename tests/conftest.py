@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -46,13 +46,18 @@ def fixture_text(name: str) -> str:
 
 
 Handler = Callable[[httpx.Request], httpx.Response]
+AsyncHandler = Callable[[httpx.Request], Awaitable[httpx.Response]]
 
 
-def stub_transport(settings: Settings, handler: Handler, **kwargs: Any) -> CTGTransport:
+def stub_transport(
+    settings: Settings, handler: Handler | AsyncHandler, **kwargs: Any
+) -> CTGTransport:
     """A `CTGTransport` wired to an in-memory handler. Tests never touch the network."""
     http = httpx.AsyncClient(
         base_url=settings.ctg_base_url,
-        transport=httpx.MockTransport(handler),
+        # MockTransport dispatches sync or async handlers; an async one lets a test force real
+        # interleaving, which is what makes a concurrency assertion non-vacuous.
+        transport=httpx.MockTransport(handler),  # type: ignore[arg-type]
     )
     kwargs.setdefault("sleep", _no_sleep)
     return CTGTransport(settings, http=http, **kwargs)

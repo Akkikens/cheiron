@@ -20,10 +20,20 @@ frequencies are biased and must never be reported as values.
 count-only request per label, concurrently:
 `Essie.full_match(dim.area, label)` ANDed with the base filter.
 
-`COVERAGE[FullMatch]` (spelling per T01) is **mandatory** here. Without it,
-`AREA[LeadSponsorName]"Merck"` returns 2,733 — substring-matching Merck KGaA and others —
+`COVERAGE[FullMatch]` is **mandatory** here, on every open dimension, without exception.
+Without it, `AREA[LeadSponsorName]"Merck"` returns 2,733 — matching Merck KGaA and others —
 where the correct exact count is 1,841 (notes §2, SPEC A2). This is the single most
 important line in this task.
+
+**Do not "optimize" it away on the strength of notes §6.7.** T06 measured that `FullMatch`
+is a *no-op* on `LocationCountry` — `Niger` returns 47 with or without it, and `Nigeria`'s
+454 is never absorbed — because country values are normalized exact terms. That is a fact
+about `LocationCountry`, not a fact about open vocabularies as a category. The defect it
+guards against is **free-text embedding**: `LeadSponsorName`, `InterventionName` and
+`Condition` are unnormalized strings where a short name is a substring of longer ones
+(notes §6.5: 51,610 distinct lead sponsors, "Novartis" vs "Novartis Pharmaceuticals"). T03
+measured that over-escaping and over-scoping are harmless, so applying `FullMatch`
+uniformly costs nothing and removing it selectively costs 892 studies on one sponsor.
 
 **Phase 3 — disclose.** The resulting `BucketSet` carries:
 - `exactness="exact"` on every bucket — each confirmed count *is* exact.
