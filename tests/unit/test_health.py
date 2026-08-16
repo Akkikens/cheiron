@@ -50,10 +50,11 @@ def test_every_response_carries_a_request_id(settings: Settings, enums_handler: 
     assert len(response.headers[REQUEST_ID_HEADER]) == 32
 
 
-def test_analyze_is_not_wired_yet(settings: Settings, enums_handler: Handler) -> None:
-    """T02 ships /health only; this fails loudly the moment T07 lands without updating it."""
+def test_analyze_is_wired(settings: Settings, enums_handler: Handler) -> None:
+    """T07 lands /analyze; a missing route would 404 with invalid_request under the envelope."""
     with _client(settings, enums_handler) as client:
         response = client.post("/analyze", json={"query": "trials by phase"})
 
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "invalid_request"
+    # Without a studies count stub this may be 502; the point is the route exists.
+    assert response.status_code != 404
+    assert "error" in response.json() or "visualization" in response.json()

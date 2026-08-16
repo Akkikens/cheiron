@@ -127,7 +127,10 @@ def test_multiple_series_requires_comparison_intent() -> None:
 @pytest.mark.parametrize("hint", ["pie_chart", "donut_chart", "PIE_CHART"])
 def test_unrenderable_hint_is_discarded_not_fatal(hint: str) -> None:
     """A7: a pie_chart hint is discarded. The request must not fail because of advice."""
-    assert a_plan(viz_hint=hint).viz_hint is None
+    plan = a_plan(viz_hint=hint)
+
+    assert plan.viz_hint is None
+    assert plan.discarded_viz_hint == hint.lower()
 
 
 def test_a_typo_in_viz_hint_still_fails_loudly() -> None:
@@ -136,7 +139,10 @@ def test_a_typo_in_viz_hint_still_fails_loudly() -> None:
 
 
 def test_a_valid_hint_is_kept() -> None:
-    assert a_plan(viz_hint="bar_chart").viz_hint is ChartType.BAR_CHART
+    plan = a_plan(viz_hint="bar_chart")
+
+    assert plan.viz_hint is ChartType.BAR_CHART
+    assert plan.discarded_viz_hint is None
 
 
 # --- normalized_key (SPEC §7) -------------------------------------------------------------
@@ -148,6 +154,16 @@ def test_key_ignores_interpretation_and_viz_hint() -> None:
     second = a_plan(interpretation="A completely different phrasing.", viz_hint="table")
 
     assert first.normalized_key() == second.normalized_key()
+
+
+def test_key_ignores_discarded_viz_hint() -> None:
+    """A server-side annotation on the plan, not model output — same treatment as viz_hint."""
+    with_discard = a_plan(viz_hint="pie_chart")
+    without = a_plan()
+
+    assert with_discard.discarded_viz_hint == "pie_chart"
+    assert without.discarded_viz_hint is None
+    assert with_discard.normalized_key() == without.normalized_key()
 
 
 def test_key_changes_when_a_filter_changes() -> None:
@@ -253,6 +269,17 @@ def test_schema_carries_no_docstring_prose() -> None:
     assert "title" not in serialized
     assert "description" not in serialized
     assert "_UNRENDERABLE_HINTS" not in serialized
+
+
+def test_discarded_viz_hint_is_absent_from_the_published_schema() -> None:
+    """Server-side annotation only. Under strict mode every property is required, so shipping
+    this field would oblige the model to invent a value for something only the server writes.
+    """
+    schema = AnalysisPlan.json_schema_strict()
+
+    assert "discarded_viz_hint" not in schema.get("properties", {})
+    assert "discarded_viz_hint" not in schema.get("required", [])
+    assert "discarded_viz_hint" not in json.dumps(schema)
 
 
 # --- the Structured Outputs constraint set -------------------------------------------------

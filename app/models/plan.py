@@ -11,7 +11,8 @@ import json
 from enum import StrEnum
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 
 class Intent(StrEnum):
@@ -113,13 +114,19 @@ class AnalysisPlan(BaseModel):
     metric: Metric = Metric.STUDY_COUNT
     viz_hint: ChartType | None = None
     interpretation: str = Field(max_length=300)
+    # Not part of the IR the model emits — only records that a forbidden hint arrived so the
+    # registry can put the discard in `meta.warnings` (SPEC A7) rather than dropping it silently.
+    discarded_viz_hint: SkipJsonSchema[str | None] = None
 
-    @field_validator("viz_hint", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def _drop_unrenderable_hint(cls, value: Any) -> Any:
+    def _capture_unrenderable_hint(cls, value: Any) -> Any:
         """`viz_hint` is advisory (SPEC §3); an unrenderable one is discarded, not fatal."""
-        if isinstance(value, str) and value.lower() in _UNRENDERABLE_HINTS:
-            return None
+        if not isinstance(value, dict):
+            return value
+        hint = value.get("viz_hint")
+        if isinstance(hint, str) and hint.lower() in _UNRENDERABLE_HINTS:
+            return {**value, "viz_hint": None, "discarded_viz_hint": hint.lower()}
         return value
 
     @model_validator(mode="after")
@@ -148,7 +155,9 @@ class AnalysisPlan(BaseModel):
         back: one is prose, the other is advice the registry may ignore.
         """
         canonical = _canonicalise(
-            self.model_dump(mode="json", exclude={"interpretation", "viz_hint"})
+            self.model_dump(
+                mode="json", exclude={"interpretation", "viz_hint", "discarded_viz_hint"}
+            )
         )
         return hashlib.sha256(
             json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")

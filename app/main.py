@@ -4,12 +4,15 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
+from app.analyze import analyze
 from app.config import Settings, get_settings
 from app.ctg.client import CTGClient, CTGTransport
 from app.ctg.vocab import VocabularyCache
 from app.errors import install_error_handlers, install_request_id_middleware
+from app.models.request import AnalyzeRequest
+from app.models.response import AnalyzeResponse
 
 
 def create_app(
@@ -37,6 +40,7 @@ def create_app(
         "specifications out.",
         lifespan=lifespan,
     )
+    app.state.settings = resolved
 
     install_request_id_middleware(app)
     install_error_handlers(app)
@@ -48,5 +52,14 @@ def create_app(
             "llm_enabled": resolved.llm_enabled,
             "vocabulary": "ok" if app.state.vocabulary_ready else "unavailable",
         }
+
+    @app.post("/analyze", response_model=AnalyzeResponse)
+    async def analyze_endpoint(body: AnalyzeRequest, request: Request) -> AnalyzeResponse:
+        return await analyze(
+            body,
+            transport=request.app.state.transport,
+            vocabulary_cache=request.app.state.vocabulary_cache,
+            settings=request.app.state.settings,
+        )
 
     return app
