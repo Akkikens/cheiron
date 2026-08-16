@@ -113,7 +113,7 @@ demoable system.
 | [T06](tasks/T06-preflight-and-counts.md) | Preflight + `server_counts` fan-out + coverage math | 30m | T03, T05 | **A1 reconciliation passes** |
 | [T07](tasks/T07-render.md) | Chart registry + encoding + `/analyze` wired end-to-end | 30m | T06 | **first real bar chart, no LLM** |
 | [T08](tasks/T08-citations.md) | Citations | 20m | T07 | citations on every datum |
-| [T09](tasks/T09-llm-planner.md) | LLM planner + repair loop + plan cache | 30m | T05, T07 | natural-language questions |
+| [T09](tasks/T09-llm-planner.md) | LLM planner + repair loop + plan cache | 30m | T05, T07, **a working key** | natural-language questions |
 | [T10](tasks/T10-record-mode.md) | `complete_records` mode + network graph | 25m | T07 | network graph, ≤2000 |
 | [T11](tasks/T11-sampled-mode.md) | `sampled_then_confirmed` mode | 25m | T06 | **A3 passes** |
 | [T12](tasks/T12-acceptance-and-readme.md) | A1–A7 acceptance suite + README + polish | 30m | all | the submission |
@@ -121,6 +121,19 @@ demoable system.
 **If you fall behind, cut in this order:** T10 (network graph — SPEC already permits
 downgrading), then T11 (fall back to `table` + a warning above threshold), then T08
 (citations are the stated "bonus"). Never cut T12.
+
+**T09 is blocked on a working key.** The `OPENAI_API_KEY` in `.env` returned 401 on every
+request during T04. Nothing before T09 needs it — T05's planner is deliberately keyless and
+T06–T08 are engine and render — so the block costs nothing until then. Two notes for whoever
+unblocks it:
+
+- 401 is authentication, not billing. Exhausted quota returns 429 `insufficient_quota`, so a
+  401 means the key is revoked, malformed, or scoped to a project without `gpt-4.1` enabled.
+  Switching to API billing would not produce it.
+- The schema is not what to suspect first. `AnalysisPlan.json_schema_strict()` is asserted
+  against the whole documented Structured Outputs constraint set in
+  `tests/unit/test_models_plan.py`, so T09's first live call is a confirmation. If it fails,
+  look at the key or the model id.
 
 ---
 
