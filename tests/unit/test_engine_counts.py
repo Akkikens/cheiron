@@ -78,11 +78,15 @@ class Upstream:
         *,
         data_timestamps: list[str] | None = None,
         fail_predicates: dict[str, Exception] | None = None,
+        fail_citation_predicates: dict[str, Exception] | None = None,
+        studies_by_predicate: dict[str, list[dict[str, Any]]] | None = None,
         delay: float = 0.0,
     ) -> None:
         self.counts_by_predicate = counts_by_predicate
         self.data_timestamps = data_timestamps or [DATA_TIMESTAMP]
         self.fail_predicates = fail_predicates or {}
+        self.fail_citation_predicates = fail_citation_predicates or {}
+        self.studies_by_predicate = studies_by_predicate or {}
         self.delay = delay
         self.requests: list[httpx.Request] = []
         self.version_reads = 0
@@ -108,14 +112,29 @@ class Upstream:
                 )
 
             predicate = request.url.params.get("filter.advanced")
-            if predicate in self.fail_predicates:
+            is_count = request.url.params.get("countTotal") == "true"
+
+            if is_count and predicate in self.fail_predicates:
                 raise self.fail_predicates[predicate]
+            if not is_count and predicate in self.fail_citation_predicates:
+                raise self.fail_citation_predicates[predicate]
 
             if predicate not in self.counts_by_predicate:
                 return httpx.Response(400, text=f"unstubbed predicate: {predicate}")
 
+            if is_count:
+                return httpx.Response(
+                    200, json={"totalCount": self.counts_by_predicate[predicate], "studies": []}
+                )
+
+            page_size = int(request.url.params.get("pageSize", "10"))
+            studies = list(self.studies_by_predicate.get(predicate or "", []))[:page_size]
             return httpx.Response(
-                200, json={"totalCount": self.counts_by_predicate[predicate], "studies": []}
+                200,
+                json={
+                    "totalCount": self.counts_by_predicate[predicate],
+                    "studies": studies,
+                },
             )
 
         return handle
@@ -145,10 +164,12 @@ async def a_context(
     transport = stub_transport(settings, upstream.async_handler)
     client = CTGClient(transport)
     vocab = await Vocabulary.load(client)
+    # Citation tests opt in explicitly; the count-fan-out suite stays citation-free so its
+    # spend and concurrency assertions stay about counts.
     ctx = new_context(
         client,
         vocab,
-        options or Options(),
+        options or Options(include_citations=False),
         settings=settings.model_copy(update={"max_upstream_requests": budget}),
         data_timestamp=DATA_TIMESTAMP,
     )

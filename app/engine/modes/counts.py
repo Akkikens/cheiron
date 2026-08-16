@@ -6,6 +6,10 @@ because SPEC §4.5 forbids rendering a partial aggregation. A bar chart missing 
 look broken — it looks like a finding. So `gather(return_exceptions=True)` collects every
 outcome, the remaining tasks are cancelled, and the first exception is re-raised.
 
+Citation fetches ride the same wave but with the opposite failure rule: a missing citation is
+missing evidence for a number that is still exact, so that bucket keeps its count and loses only
+its citations (see `citations.py`).
+
 Counts from this mode are `exactness="exact"` regardless of how large the result set is: each
 bucket is a `countTotal` on a predicate, not a sample.
 """
@@ -20,10 +24,16 @@ from typing import Any, Final
 from app.ctg.essie import Essie
 from app.engine.basefilter import with_predicate, year_span
 from app.engine.bucketset import Bucket, BucketSet
+from app.engine.citations import (
+    ORDERING_ASSUMPTION,
+    citation_note,
+    plan_citation_budget,
+    sample_citations,
+)
 from app.engine.context import RunContext
 from app.engine.dimensions import Dimension, is_temporal
 from app.models.plan import AnalysisPlan
-from app.models.response import AggregationMode
+from app.models.response import AggregationMode, Citation
 
 MODE_NAME: Final[AggregationMode] = "server_counts"
 
@@ -52,34 +62,80 @@ async def run(
         )
         keys = keys[:max_buckets]
 
-    # One per bucket, +1 for the MISSING probe every mode issues (SPEC §5.2), +1 for the
-    # post-wave timestamp recheck. The recheck is charged because it is a real conditional
-    # request; leaving it out would make the budget understate upstream traffic by one per
-    # group-by, which is exactly the kind of quiet drift the budget exists to prevent.
-    ctx.spend(len(keys) + 2, f"the {dim.key} count fan-out")
+    # Counts: one per bucket, +1 for MISSING, +1 for the post-wave timestamp recheck.
+    count_cost = len(keys) + 2
+    cite_fetches, cite_warnings = plan_citation_budget(
+        ctx, bucket_count=len(keys), count_cost=count_cost
+    )
+    warnings.extend(cite_warnings)
+
+    ctx.spend(count_cost + cite_fetches, f"the {dim.key} count fan-out")
 
     predicates = [(key, _predicate(dim, key, plan)) for key in keys]
-    counts = await _gather_or_fail(
-        [ctx.client.count(with_predicate(params, predicate)) for _, predicate in predicates]
-        + [ctx.client.count(with_predicate(params, Essie.missing(dim.area)))]
-    )
+    per_datum = ctx.options.citations_per_datum if cite_fetches else 0
+
+    # Citation coroutines are scheduled alongside the counts so they share the wave, not a
+    # second round trip after it. Only the first `cite_fetches` buckets get a fetch; the rest
+    # are the ones cut when the budget was tight.
+    cite_coros: list[Coroutine[Any, Any, tuple[list[Citation], str]]] = []
+    for index, (_, predicate) in enumerate(predicates):
+        if index < cite_fetches:
+            cite_coros.append(
+                sample_citations(
+                    predicate,
+                    dim,
+                    per_datum,
+                    ctx,
+                    # Contributing is unknown until counts land; size the page to `n` and
+                    # rebuild the note with the real total below.
+                    contributing=per_datum,
+                    base_params=params,
+                )
+            )
+
+    count_coros: list[Coroutine[Any, Any, int]] = [
+        ctx.client.count(with_predicate(params, predicate)) for _, predicate in predicates
+    ] + [ctx.client.count(with_predicate(params, Essie.missing(dim.area)))]
+
+    # Counts fail-all; citations fail soft. Run them as two gathers in parallel so a citation
+    # exception cannot cancel a count, and a count exception still cancels everything.
+    counts_task = asyncio.create_task(_gather_or_fail(count_coros))
+    cites_task = asyncio.create_task(_gather_citations(cite_coros, keys[:cite_fetches], warnings))
+    counts, citation_results = await asyncio.gather(counts_task, cites_task)
 
     *bucket_counts, unclassified = counts
 
-    # SPEC §7: a mid-run dataset change means two revisions in one chart. The caller retries the
-    # whole group-by once. This has to be a live read, or the guarantee is decorative.
     await ctx.assert_data_unchanged()
 
-    return BucketSet(
-        buckets=[
+    if cite_fetches:
+        ctx.assumptions.append(ORDERING_ASSUMPTION)
+
+    buckets: list[Bucket] = []
+    for index, ((key, _), count) in enumerate(
+        zip(predicates, bucket_counts, strict=True),
+    ):
+        citations: list[Citation] = []
+        note: str | None = None
+        if index < len(citation_results) and count > 0:
+            raw_citations, _ = citation_results[index]
+            citations = raw_citations[: min(per_datum, int(count))]
+            note = citation_note(len(citations), int(count)) if citations else None
+        elif index < len(citation_results) and count == 0:
+            citations, note = [], None
+
+        buckets.append(
             Bucket(
                 key=key,
                 label=_label(dim, key, ctx),
                 value=count,
                 exactness="exact",
+                citations=citations,
+                citation_note=note,
             )
-            for (key, _), count in zip(predicates, bucket_counts, strict=True)
-        ],
+        )
+
+    return BucketSet(
+        buckets=buckets,
         total=total,
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
@@ -106,6 +162,31 @@ async def _gather_or_fail(counts: Sequence[Coroutine[Any, Any, int]]) -> list[in
         raise failures[0]
 
     return [result for result in results if not isinstance(result, BaseException)]
+
+
+async def _gather_citations(
+    coros: Sequence[Coroutine[Any, Any, tuple[list[Citation], str]]],
+    keys: Sequence[str],
+    warnings: list[str],
+) -> list[tuple[list[Citation], str]]:
+    """Citation failure is non-fatal: drop that bucket's citations and warn."""
+    if not coros:
+        return []
+
+    tasks = [asyncio.ensure_future(coro) for coro in coros]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    out: list[tuple[list[Citation], str]] = []
+    for key, result in zip(keys, results, strict=True):
+        if isinstance(result, BaseException):
+            warnings.append(
+                f"Citations for bucket {key!r} could not be retrieved ({type(result).__name__}); "
+                f"the count is still exact."
+            )
+            out.append(([], ""))
+        else:
+            out.append(result)
+    return out
 
 
 def _bucket_keys(plan: AnalysisPlan, dim: Dimension, ctx: RunContext) -> list[str]:

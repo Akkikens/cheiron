@@ -17,6 +17,7 @@ class Bucket:
     value: float
     exactness: Exactness
     citations: list[Citation] = field(default_factory=list)
+    citation_note: str | None = None
 
 
 @dataclass(frozen=True)

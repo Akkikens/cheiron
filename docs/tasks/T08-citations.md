@@ -38,9 +38,12 @@ Fetching:
   with the count fan-out wave, not after it.
 - Skip entirely when `options.include_citations is False` or `citations_per_datum == 0`
   — and then don't spend the upstream budget either.
-- In `complete_records` mode citations are **free**: the full projected records are already
-  in memory, so sample from them and issue **zero** extra requests. Assert this with a
-  request-count test — it's a real efficiency claim worth being able to demonstrate.
+- **Scope this task to the `server_counts` path only.** The free-citations case belongs to
+  `complete_records`, which doesn't exist until T10 — building it now means stubbing the
+  mode, and T10 already carries the obligation ("citations are free: sample from the
+  in-memory records, zero extra requests", with the request-count test). Design
+  `sample_citations` so the record-mode caller can pass already-fetched records instead of
+  triggering a fetch, then leave that path to T10. Do not stub it here.
 - Citation failure is **not** fatal (unlike a count failure): drop the citations for that
   bucket, add a warning naming the bucket. Evidence is nice-to-have; numbers are not.
 - Citation requests count against `ctx.upstream_budget` and are the **first thing cut**
@@ -66,6 +69,6 @@ offer.
 - `citation_note` wording matches SPEC §4.2 exactly, both the sampled and the "all" case.
 - `include_citations=false` → no `citations` key **and** zero citation requests in
   `query_log`.
-- `complete_records` mode → citations present, upstream request count unchanged from the
-  no-citations run.
+- (Deferred to T10: `complete_records` citations present with upstream request count
+  unchanged from the no-citations run.)
 - An injected citation-fetch failure → numbers intact, warning present, no exception.

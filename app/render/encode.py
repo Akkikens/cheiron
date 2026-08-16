@@ -164,6 +164,8 @@ def _row(bucket: Bucket, dim: Dimension, metric: Metric, vocab: Vocabulary) -> d
     }
     if bucket.citations:
         row["citations"] = [c.model_dump() for c in bucket.citations]
+        if bucket.citation_note is not None:
+            row["citation_note"] = bucket.citation_note
     return row
 
 
