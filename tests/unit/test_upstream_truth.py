@@ -10,9 +10,8 @@ import json
 import pytest
 
 from app.constants import FULL_MATCH_OP
-from tests.conftest import FIXTURES
+from tests.conftest import UPSTREAM
 
-UPSTREAM = FIXTURES / "upstream"
 MANIFEST = json.loads((UPSTREAM / "fullmatch_manifest.json").read_text())
 CASES = {case["fixture"]: case for case in MANIFEST["cases"]}
 

@@ -78,7 +78,7 @@ class Vocabulary:
 - Startup must not hard-fail if `/studies/enums` is unreachable: log, serve `/health` with
   `"vocabulary": "unavailable"`, and let `/analyze` return `502 upstream_error`.
 
-## Tests (`respx`, no network)
+## Tests (`httpx.MockTransport` via the injectable transport seam, no network)
 
 - `text/plain` 400 body → `CheironError(upstream_error, 502)` whose message contains the
   predicate; `response.json()` is never called (assert via a body that isn't valid JSON).

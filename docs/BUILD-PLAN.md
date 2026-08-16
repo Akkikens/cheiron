@@ -42,7 +42,7 @@ Paste this preamble with **every** task prompt:
 | HTTP client | `httpx.AsyncClient` (HTTP/2, gzip) | Concurrent count fan-out |
 | LLM | OpenAI `gpt-4.1` via Structured Outputs (`strict: true`) | Key is already in `.env`; strict schema is §3's requirement |
 | Cache | In-process `cachetools.TTLCache` behind a `Cache` protocol | Stateless-per-§7 means no shared store is required for the take-home |
-| Tests | pytest + pytest-asyncio + `respx` | `respx` mocks `httpx` at transport level |
+| Tests | pytest + pytest-asyncio + `httpx.MockTransport` | T02 built an injectable transport seam; `respx` would patch around it. One mocking style only — `respx` is **not** a dependency |
 | Lint/types | ruff + mypy (`strict` on `app/`) | |
 | Deps | `uv` if available, else `pip` + `requirements.txt` | |
 

@@ -87,6 +87,19 @@ Note the trap in SPEC §5.1: `lead_sponsor` is `partition=True` (one lead sponso
 study, notes §5) even though its vocabulary is open. Open vocabulary and non-partition are
 **independent** axes — do not collapse them into one flag.
 
+**`enum_name` and `area` are separate fields for a reason T02 measured.** `/studies/enums`
+exposes a `pieces` list mapping each enum type to the `AREA[]` names it governs, and it is
+**not 1:1**: `Status` governs both `OverallStatus` and `LastKnownStatus`; `AgencyClass`
+governs three. So an enum type name is never usable as an `AREA[]` name. `overall_status`
+is `enum_name="Status"`, `area="OverallStatus"` — and picking `LastKnownStatus` instead
+would silently answer a different question (it's the last known status of studies that
+stopped updating, which is the 16% `UNKNOWN` cohort in notes §6.6).
+
+Add a registry-integrity test using `pieces` from the recorded enums fixture: for every
+row with a non-`None` `enum_name`, assert `dim.area` appears in that enum type's `pieces`
+list. This catches an `area`/`enum_name` mismatch at test time instead of as a wrong chart.
+Reading `pieces` is test-only — it stays outside `CTGClient.enums()`'s frozen signature.
+
 ## Tests
 
 Table-driven, asserting the exact strings from notes §2:

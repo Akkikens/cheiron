@@ -82,7 +82,8 @@ validate → plan → preflight → aggregate → coverage → select_chart → 
 
 ## Tests
 
-- End-to-end with `respx` fixtures, `LLM_ENABLED=false`: `{"query": "How many trials by
+- End-to-end over an injected `CTGTransport` (T02's seam) with recorded fixtures,
+  `LLM_ENABLED=false`: `{"query": "How many trials by
   phase?", "drug_name": "Pembrolizumab"}` → a `bar_chart` matching SPEC §4's example
   structure, with A1's numbers.
 - Chart selection table: one case per row, plus one per safety rule.

@@ -216,6 +216,37 @@ of the parameter set that produced it and refuse a mismatch.
 Loaded at runtime from `/studies/enums` (41 enums) — never hardcoded. Listed here for
 reference only.
 
+### Response shape (verified 2026-08-16, recorded to `tests/fixtures/upstream/studies_enums.json`)
+
+`/studies/enums` is a **JSON array**, not an object. Each element is:
+
+```jsonc
+{ "type": "Phase",
+  "values": [ { "value": "NA", "legacyValue": "Not Applicable" }, … ],
+  "pieces": [ "Phase" ] }
+```
+
+Three things follow:
+
+- **`legacyValue` is upstream's own human label**, and for the enums we render it is the
+  one we want: `NA` → `Not Applicable`, `ACTIVE_NOT_RECRUITING` → `Active, not recruiting`,
+  `UNKNOWN` → `Unknown status`. For `AgencyClass` it is just the value echoed back
+  (`NIH` → `NIH`, `OTHER_GOV` → `OTHER_GOV`), so it is only a label when it differs from
+  `value`.
+- **`pieces` maps an enum type to the Essie `AREA[]` names it governs**, which is not a
+  1:1 relationship: `Status` → `OverallStatus`, `LastKnownStatus`; `AgencyClass` →
+  `OrgClass`, `LeadSponsorClass`, `CollaboratorClass`; `Phase` → `Phase`. The enum *type*
+  name is therefore not usable as an `AREA[]` name — SPEC §5.1's registry column is the
+  piece, not the type.
+- **Declaration order is not clinical order.** `Phase` arrives `NA` first; SPEC §4's `sort`
+  array wants `NA` second-to-last. Only `Phase` needs the override.
+
+### ETag is dataset-scoped
+
+`/version` and `/studies/enums` returned the **same** tag, `"883b003/0.34.1/msspuzuw"`,
+confirming §4's "dataset-scoped rather than per-query" reading. `If-None-Match` with that
+tag → `304`, zero bytes. One cached tag per dataset revision is enough.
+
 - **Phase** — `NA`, `EARLY_PHASE1`, `PHASE1`, `PHASE2`, `PHASE3`, `PHASE4`
 - **Status** — `ACTIVE_NOT_RECRUITING`, `COMPLETED`, `ENROLLING_BY_INVITATION`,
   `NOT_YET_RECRUITING`, `RECRUITING`, `SUSPENDED`, `TERMINATED`, `WITHDRAWN`,
