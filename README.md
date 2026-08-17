@@ -504,9 +504,13 @@ Three more that shaped the implementation:
 ## 8. Tools, validation, and what was deliberate
 
 **Tools.** Claude (Claude Code) throughout, and Cursor for parts of the implementation. The
-working method was to write the contract first — `SPEC.md` and `docs/CTG-API-NOTES.md` — then
-implement against it in twelve reviewable commits, one per subsystem. The commit log is the
-build narrative and each message records the reasoning behind that step.
+working method was to write the contract first — `SPEC.md` and `docs/CTG-API-NOTES.md` — then a
+build plan splitting it into twelve reviewable tasks, one per subsystem, each with its own
+acceptance criteria. Those task specs are in [`docs/tasks/`](docs/tasks/) and
+[`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md); they are what the implementation was written
+against, and reading one alongside its commit shows what was specified versus what the code
+had to discover. The commit log is the build narrative, and each message records the reasoning
+for that step — including the two commits that say a shipped chart was a fabrication and why.
 
 **How correctness was validated.**
 
