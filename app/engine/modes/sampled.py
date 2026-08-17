@@ -259,8 +259,18 @@ def _buckets(
 
 
 def _disclosure(sample_size: int, total: int) -> str:
-    """SPEC §4.3's required sentence. Per-label counts exact; the label *set* may be incomplete."""
+    """SPEC §4.3's required sentence. Per-label counts exact; the label *set* may be incomplete.
+
+    When the sample reached every matching study there is no "outside the sample", and saying a
+    label might be hiding there would be a disclaimer rather than a disclosure — the kind of
+    hedging that teaches a reader to ignore the warnings that do matter.
+    """
     percent = (sample_size / total * 100) if total else 0.0
+    if total and sample_size >= total:
+        return (
+            f"Labels were discovered from all {total:,} matching studies, so the label set is "
+            f"complete. Each displayed count is exact and confirmed against the full corpus."
+        )
     return (
         f"Labels were discovered from a {sample_size:,}-study sample ({percent:.1f}% of "
         f"{total:,} matching studies). Each displayed count is exact and confirmed against the "

@@ -7,6 +7,7 @@ network built from a relevance-ranked sample looks authoritative and isn't.
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
@@ -44,7 +45,7 @@ def build(
     warnings: list[str] = []
     chosen = pairing or choose_pairing(plan)
     edge_weights: Counter[tuple[str, str]] = Counter()
-    edge_ncts: dict[tuple[str, str], list[str]] = {}
+    edge_ncts: dict[tuple[str, str], list[tuple[str, str]]] = {}
     node_weights: Counter[str] = Counter()
     node_groups: dict[str, str] = {}
 
@@ -68,11 +69,12 @@ def build(
                 node_weights[node] += 1
                 seen_in_study.add(node)
 
+        excerpt = _excerpt_for(left, right, chosen)
         for source, target in _pairs(left, right, chosen):
             key = (source, target) if source <= target else (target, source)
             edge_weights[key] += 1
             if nct:
-                edge_ncts.setdefault(key, []).append(nct)
+                edge_ncts.setdefault(key, []).append((nct, excerpt))
 
     # Drop single-occurrence edges first, then prune nodes by degree.
     kept_edges = {edge: weight for edge, weight in edge_weights.items() if weight >= 2}
@@ -116,15 +118,19 @@ def build(
     for (source, target), weight in sorted(final_edges.items(), key=lambda item: -item[1]):
         entry: dict[str, Any] = {"source": source, "target": target, "weight": weight}
         if per_datum > 0:
-            ncts = edge_ncts.get((source, target), [])[:per_datum]
+            cited = edge_ncts.get((source, target), [])[:per_datum]
             entry["citations"] = [
                 {
                     "nct_id": nct,
-                    "field": "co-occurrence",
-                    "excerpt": nct,
+                    "field": _PAIRING_FIELDS[chosen],
+                    # A verbatim serialization of the two fields whose co-occurrence *is* the
+                    # edge (SPEC §4.2 rule 1). Repeating the NCT id as the excerpt, as this
+                    # did, cites nothing: it restates the identifier already in `nct_id` and
+                    # gives a reader no way to check the claim.
+                    "excerpt": excerpt_text,
                     "url": f"https://clinicaltrials.gov/study/{nct}",
                 }
-                for nct in ncts
+                for nct, excerpt_text in cited
             ]
         edges.append(entry)
 
@@ -165,6 +171,10 @@ def _network_title(plan: AnalysisPlan, pairing: Pairing) -> str:
         "intervention_intervention": "Intervention Co-occurrence Network",
         "condition_intervention": "Condition-Intervention Network",
     }
+    # Same rule as encode._title_case: leave an already-capitalised drug name alone, otherwise
+    # title-case. A chart headed "glioblastoma Condition-Intervention Network" reads as a bug.
+    if subject and not (subject[:1].isupper() and not subject.isupper()):
+        subject = subject.title()
     head = f"{subject} " if subject else ""
     return f"{head}{labels[pairing]}".strip()
 
@@ -189,6 +199,30 @@ def _endpoints(study: Mapping[str, Any], pairing: Pairing) -> tuple[list[str], l
     if pairing == "intervention_intervention":
         return interventions, interventions, "intervention", "intervention"
     return conditions, interventions, "condition", "intervention"
+
+
+_PAIRING_FIELDS: dict[Pairing, str] = {
+    "sponsor_intervention": (
+        "protocolSection.sponsorCollaboratorsModule.leadSponsor.name + "
+        "protocolSection.armsInterventionsModule.interventions[].name"
+    ),
+    "intervention_intervention": "protocolSection.armsInterventionsModule.interventions[].name",
+    "condition_intervention": (
+        "protocolSection.conditionsModule.conditions + "
+        "protocolSection.armsInterventionsModule.interventions[].name"
+    ),
+}
+"""The structured fields whose co-occurrence constitutes an edge — never a narrative field."""
+
+
+def _excerpt_for(left: list[str], right: list[str], pairing: Pairing) -> str:
+    """Compact JSON of the values that produced the edge, exactly as upstream returned them."""
+    if pairing == "intervention_intervention":
+        return json.dumps({"interventions": left}, separators=(",", ":"), ensure_ascii=False)
+    head = "sponsor" if pairing == "sponsor_intervention" else "conditions"
+    return json.dumps(
+        {head: left, "interventions": right}, separators=(",", ":"), ensure_ascii=False
+    )
 
 
 def _pairs(left: list[str], right: list[str], pairing: Pairing) -> list[tuple[str, str]]:

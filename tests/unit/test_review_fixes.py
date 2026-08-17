@@ -294,3 +294,27 @@ async def test_an_empty_bar_chart_still_collapses_to_a_table(
 
     assert viz.type is ChartType.TABLE
     assert viz.data == []
+
+
+# --- network citations must be checkable ----------------------------------------------------
+
+
+async def test_edge_citations_quote_the_record_not_the_id(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """Repeating the NCT id as the excerpt cites nothing — it restates `nct_id` (SPEC §4.2)."""
+    ctx = await a_ctx(settings, vocab)
+    ctx.options = Options(include_citations=True, citations_per_datum=2)
+    studies = [
+        intervention_study("NCT1", ["Temozolomide", "Bevacizumab"]),
+        intervention_study("NCT2", ["Temozolomide", "Bevacizumab"]),
+    ]
+
+    viz, _ = network.build(studies, a_network_plan(), ctx, pairing="intervention_intervention")
+
+    citation = viz.data["edges"][0]["citations"][0]
+    assert citation["nct_id"] == "NCT1"
+    assert citation["excerpt"] != citation["nct_id"]
+    assert "Temozolomide" in citation["excerpt"]
+    assert "interventions" in citation["field"]
+    assert "briefSummary" not in citation["field"]

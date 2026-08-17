@@ -426,3 +426,18 @@ async def test_semantics_follow_the_registry_not_the_mode(settings: Settings) ->
     bucketset, _ = await run_default(settings, upstream)
 
     assert bucketset.semantics == "partition"
+
+
+async def test_a_complete_sample_does_not_hedge(settings: Settings) -> None:
+    """When the sample reached every study there is no "outside" for a label to hide in."""
+    complete = sampled._disclosure(2_251, 2_251)
+
+    assert "label set is complete" in complete
+    assert "may be missing" not in complete
+
+
+async def test_a_partial_sample_still_hedges(settings: Settings) -> None:
+    partial = sampled._disclosure(3_000, 57_400)
+
+    assert "may be missing from this chart" in partial
+    assert "5.2%" in partial
