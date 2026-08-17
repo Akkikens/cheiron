@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Cheiron: auditable charts from clinical trial data</title>
+<title>Cheiron · Akshay Kalapgar · backend assessment</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/mark-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/mark-180.png">
@@ -53,10 +53,11 @@
   .wordmark .name { display: inline; }
   .wordmark .dot { color: var(--ramp-hi); margin-left: 1px; }
   .tagline { font: italic 15px/1 var(--serif); color: var(--muted); }
-  .masthead .live {
-    margin-left: auto; font: 500 11px/1 var(--mono); letter-spacing: .1em;
-    text-transform: uppercase; color: var(--muted);
+  .masthead .by {
+    margin-left: auto; text-align: right; font: 500 11px/1.6 var(--mono);
+    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
   }
+  .masthead .by b { display: block; font-weight: 600; color: var(--ink-2); }
 
   /* --- shell --------------------------------------------------------------- */
   .shell { display: grid; grid-template-columns: 312px minmax(0, 1fr); }
@@ -173,6 +174,18 @@
   pre { overflow: auto; font: 11px/1.5 var(--mono); background: var(--card);
         border: 1px solid var(--rule); border-radius: 3px; padding: 16px; margin-top: 10px; }
 
+  .colophon {
+    border-top: 1px solid var(--rule); margin: 0 32px; padding: 20px 0 40px;
+    display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline;
+    font: 12px/1.6 var(--mono); color: var(--muted);
+  }
+  .colophon b { color: var(--ink-2); font-weight: 600; }
+  .colophon .links { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
+  .colophon a { text-decoration: none; }
+  .colophon a:hover { text-decoration: underline; }
+  .colophon .note { font: italic 13px/1.6 var(--serif); flex-basis: 100%; margin: 0; }
+  @media (max-width: 880px) { .colophon .links { margin-left: 0; } }
+
   .empty { max-width: 46ch; }
   .empty p { font: 17px/1.6 var(--serif); color: var(--ink-2); }
   .empty .hint { font: 12px/1.6 var(--mono); color: var(--muted); }
@@ -199,7 +212,7 @@
 <header class="masthead">
   <h1 class="wordmark"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26"><span class="name">cheiron<span class="dot">.</span></span></h1>
   <p class="tagline">Ask about clinical trials. Every number cites its source.</p>
-  <span class="live">ClinicalTrials.gov · live</span>
+  <p class="by"><b>Akshay Kalapgar</b>backend assessment · clinicaltrials.gov live</p>
 </header>
 
 <main class="shell">
@@ -262,6 +275,18 @@
     </div>
   </section>
 </main>
+
+<footer class="colophon">
+  <span><b>Akshay Kalapgar</b> · backend take-home, 2026</span>
+  <span class="links">
+    <a href="https://github.com/Akkikens/cheiron" target="_blank" rel="noopener">source</a>
+    <a href="/docs" target="_blank">api docs</a>
+    <a href="https://akshaykalapgar.com" target="_blank" rel="noopener">akshaykalapgar.com</a>
+  </span>
+  <p class="note">The number worth looking at is on the reconciliation strip: the buckets sum to
+    more than the total, and they are each exact. Most tools resolve that by quietly showing a
+    percentage. This one shows the arithmetic and cites the trials behind it.</p>
+</footer>
 
 <script>
 const $ = (id) => document.getElementById(id);
