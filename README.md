@@ -127,7 +127,7 @@ beyond `encoding` + `data`.
 | `grouped_bar_chart` | `x`, `y`, `series` |
 | `stacked_bar_chart` | `x`, `y`, `stack` |
 | `time_series` | `x` (temporal), `y`, `series?` |
-| `histogram` | `x` (quantitative, with `bin_start`/`bin_end`), `y` |
+| `histogram` | `x` (ordinal bin labels, with `bin_start`/`bin_end` on each row), `y` |
 | `scatter_plot` | `x`, `y`, `color?` |
 | `choropleth_map` | `location` (ISO-3166 alpha-3 + raw name), `value` |
 | `network_graph` | `nodes[{id,label,group,weight}]`, `edges[{source,target,weight}]` |
@@ -422,6 +422,11 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
   group-by fails. A chart with a silently missing bar is worse than an error. Citations invert
   this: a missing citation is missing evidence for a still-exact number, so it warns and
   continues.
+- **Coherence is refused at the plan, not patched at the renderer.** A comparison of an
+  enrollment metric, a plan carrying both `series` and `secondary_group_by`, a one-element
+  `series` — each is rejected with a reason rather than partly honoured. Every one of those was
+  a real defect found by review: they produced, respectively, study counts labelled
+  "participants", a silently dropped breakdown, and filters that were never applied.
 - **Refuse rather than approximate.** A cross-tab that does not fit the request budget returns
   `unplannable_query` with the arithmetic (`84 cells needed, 24 requests available`) instead of
   truncating into a stacked bar whose segments do not sum to their bar.
