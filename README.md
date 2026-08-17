@@ -574,6 +574,11 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy app
 No test touches the network. Upstream is stubbed at the transport seam with recorded fixtures;
 live calls live in `scripts/verify_upstream.py`, which is what the fixtures are recorded from.
 
+The demo is tested twice over: once from Python, that its renderer map covers every chart type
+and that no renderer branches on a drug name or dimension key; and once by executing its own
+JavaScript under node — one rect per row, one line per edge, nothing dropped silently. That
+second suite skips where node is absent, so the tests stay runnable with only Python installed.
+
 `tests/acceptance/` pins SPEC §8's criteria as executable contract tests against the recorded
 `dataTimestamp` — A1 reconciliation, A2 exact-match discipline, A3 sample disclosure, A4 no
 fabrication, A5 planner determinism, A6 degraded mode, A7 safety rules — plus invariants that
