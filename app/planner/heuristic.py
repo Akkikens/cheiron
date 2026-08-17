@@ -43,6 +43,82 @@ class Template:
 
 
 TEMPLATES: Final[tuple[Template, ...]] = (
+    # --- intents whose keywords are specific enough to outrank the broad ones ---------------
+    Template(
+        key="network",
+        keywords=(
+            "together",
+            "combination",
+            "combined with",
+            "co-occur",
+            "cooccur",
+            "alongside",
+            "network",
+            "which drugs are used with",
+        ),
+        intent=Intent.NETWORK,
+        dimension="intervention_name",
+        phrasing="Co-occurrence of interventions across {subject}",
+        example="Which interventions are studied together?",
+    ),
+    Template(
+        key="enrollment",
+        keywords=(
+            "how big",
+            "how large",
+            "enrollment",
+            "enrolment",
+            "participants",
+            "how many patients",
+            "sample size",
+            "trial size",
+        ),
+        intent=Intent.HISTOGRAM,
+        dimension="enrollment_count",
+        phrasing="Distribution of {subject} by enrollment size",
+        example="How big are these trials?",
+    ),
+    Template(
+        key="sponsor_class",
+        keywords=("industry", "who funds", "funded by", "academic", "sponsor type", "nih"),
+        intent=Intent.DISTRIBUTION,
+        dimension="sponsor_class",
+        phrasing="Distribution of {subject} by sponsor class",
+        example="How many are industry funded?",
+    ),
+    Template(
+        key="intervention_type",
+        keywords=(
+            "intervention type",
+            "type of intervention",
+            "types of intervention",
+            "drug or device",
+            "modality",
+        ),
+        intent=Intent.DISTRIBUTION,
+        dimension="intervention_type",
+        phrasing="Distribution of {subject} by intervention type",
+        example="What types of intervention are studied?",
+    ),
+    Template(
+        key="study_type",
+        # NOT a bare "interventional": "growth in interventional trials since 2020" is a trend
+        # question, and a keyword matcher that claims it produces a confident wrong chart.
+        keywords=("study type", "type of study", "observational", "interventional or"),
+        intent=Intent.DISTRIBUTION,
+        dimension="study_type",
+        phrasing="Distribution of {subject} by study type",
+        example="Are these interventional or observational?",
+    ),
+    Template(
+        key="condition",
+        keywords=("which conditions", "what conditions", "diseases", "indications"),
+        intent=Intent.DISTRIBUTION,
+        dimension="condition",
+        phrasing="Distribution of {subject} by condition",
+        example="Which conditions are studied?",
+    ),
+    # --- the original five, broader and therefore later ------------------------------------
     Template(
         key="phase",
         keywords=("phase",),

@@ -51,6 +51,60 @@ def plan_of(
 # (question, request kwargs, expected plan) — asserted whole, not field by field.
 GOLDEN: list[tuple[str, dict[str, Any], AnalysisPlan]] = [
     (
+        "Which interventions are studied together?",
+        {},
+        plan_of(
+            Intent.NETWORK,
+            "intervention_name",
+            "Co-occurrence of interventions across clinical trials.",
+        ),
+    ),
+    (
+        "How big are these trials?",
+        {},
+        plan_of(
+            Intent.HISTOGRAM,
+            "enrollment_count",
+            "Distribution of clinical trials by enrollment size.",
+        ),
+    ),
+    (
+        "How many are industry funded?",
+        {},
+        plan_of(
+            Intent.DISTRIBUTION,
+            "sponsor_class",
+            "Distribution of clinical trials by sponsor class.",
+        ),
+    ),
+    (
+        "What types of intervention are studied?",
+        {},
+        plan_of(
+            Intent.DISTRIBUTION,
+            "intervention_type",
+            "Distribution of clinical trials by intervention type.",
+        ),
+    ),
+    (
+        "Are these interventional or observational?",
+        {},
+        plan_of(
+            Intent.DISTRIBUTION,
+            "study_type",
+            "Distribution of clinical trials by study type.",
+        ),
+    ),
+    (
+        "Which conditions are studied?",
+        {},
+        plan_of(
+            Intent.DISTRIBUTION,
+            "condition",
+            "Distribution of clinical trials by condition.",
+        ),
+    ),
+    (
         "How many trials by phase?",
         {},
         plan_of(
@@ -271,13 +325,34 @@ async def test_suggestions_are_questions_this_planner_actually_answers(vocab: Vo
 
 
 def test_template_precedence_is_the_documented_order() -> None:
+    """Specific intents first, broad ones last — first keyword hit wins, so order is behaviour.
+
+    `network`, `enrollment`, `sponsor_class`, `intervention_type`, `study_type` and `condition`
+    all sit above the original five because their keywords are narrower. `study_type` in
+    particular must not claim a bare "interventional": "growth in interventional trials since
+    2020" is a trend question.
+    """
     assert [template.key for template in TEMPLATES] == [
+        "network",
+        "enrollment",
+        "sponsor_class",
+        "intervention_type",
+        "study_type",
+        "condition",
         "phase",
         "status",
         "year",
         "country",
         "sponsor",
     ]
+
+
+def test_a_trend_question_mentioning_a_study_type_is_still_a_trend() -> None:
+    """The collision that adding templates introduced, pinned so it cannot come back."""
+    template = match("What is the growth in interventional trials since 2020?")
+
+    assert template is not None
+    assert template.key == "year"
 
 
 def test_every_template_names_a_registered_dimension() -> None:
