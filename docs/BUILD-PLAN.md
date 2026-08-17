@@ -122,7 +122,10 @@ demoable system.
 downgrading), then T11 (fall back to `table` + a warning above threshold), then T08
 (citations are the stated "bonus"). Never cut T12.
 
-**T09 is blocked on a working key.** The `OPENAI_API_KEY` in `.env` returned 401 on every
+**T09 was blocked on a working key** (resolved: the LLM path is verified live and deployed).
+The original note follows, since the diagnosis is the reusable part.
+
+**Original:** The `OPENAI_API_KEY` in `.env` returned 401 on every
 request during T04. Nothing before T09 needs it — T05's planner is deliberately keyless and
 T06–T08 are engine and render — so the block costs nothing until then. Two notes for whoever
 unblocks it:
@@ -207,5 +210,5 @@ a changed `data_timestamp` raises `DataTimestampChanged` → the whole group-by 
    rather than silently degrading to `study_count`.
 
 Carried into the README's "what I'd do with more time": the live Structured Outputs call remains
-unconfirmed (the available key returned 401 throughout), and an `enrollment_count` dimension is
+since confirmed live once a working key was supplied, and an `enrollment_count` dimension is
 what would make `histogram` and `scatter_plot` reachable.

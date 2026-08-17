@@ -39,6 +39,15 @@ docker run --rm -p 8000:8000 -e LLM_ENABLED=false cheiron
 Then open **<http://localhost:8000>** for a demo UI that renders whatever the API returns, or
 POST to `/analyze` directly. FastAPI's generated docs are at `/docs`.
 
+**Deployed: <https://cheiron-sand.vercel.app>** — same routes, running the model. A free-form
+question the keyword planner cannot answer comes back with `meta.planner: "llm"`:
+
+```bash
+curl -s https://cheiron-sand.vercel.app/analyze -H 'content-type: application/json' \
+  -d '{"query":"Are glioblastoma trials mostly run by industry or by universities?"}'
+# planner "llm" · bar_chart · Glioblastoma Trials by Lead sponsor class · 2,251 studies
+```
+
 It also runs with **no API key at all**. The deterministic planner covers eleven question
 shapes — phase, status, trend, country, sponsor, sponsor class, study type, intervention type,
 condition, enrollment size, and co-occurrence — so every example in §4 is reproducible in that
@@ -527,6 +536,12 @@ for that step — including the two commits that say a shipped chart was a fabri
   the cap is raised; the fail-all test to fail when a partial result is returned; the
   timestamp-recheck test to fail when it reads a cached value instead of a live one. A green test
   that cannot fail is worse than no test.
+- **The LLM path is verified live**, not only under mocks. Against the real Structured Outputs
+  API: a trend question planned first try (`planner: "llm"`); "which sponsors run the most
+  melanoma trials, industry or academic?" came back invalid and was **repaired on the second
+  attempt** (`planner: "llm_repaired"`), which is the repair loop doing in production exactly
+  what the mocked tests assert; and the strict schema was accepted as published. The mocked
+  suite remains the regression net, because it can drive failure modes a live key cannot.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
 - **Seven adversarial review passes found 45 defects** the spec-derived tests could not see —
@@ -562,17 +577,16 @@ particular changed real behaviour rather than style.
 
 ## 9. Limitations and what I would improve with more time
 
-- **The live Structured Outputs call is unverified.** The API key available during the build
-  returned 401 (authentication, not quota — exhausted quota returns 429 `insufficient_quota`), so
-  the LLM planner's repair loop, fallback, and caching are all exercised through an injected
-  completer. The published schema is asserted against the documented strict constraint set, so
-  the first live call should be a confirmation rather than a discovery — but it has not been made.
 - **The demo bundles no map topology**, so a choropleth renders there as a ranked list. The spec
   carries ISO-3166 alpha-3 codes precisely so a real renderer can join them to one.
 - **Enrollment bin edges are fixed, not adaptive.** They suit oncology-scale trials; a corpus-wide
   question would be better served by quantile bins computed from the result set.
-- **Caches are in-process.** Correct for a stateless service, but a shared store would make the
-  plan cache useful across replicas.
+- **Caches are in-process, and on the deployment that means per-instance.** Correct for a
+  stateless service, but serverless gives each cold instance its own, so the plan cache helps far
+  less there than in a long-lived process. A shared store is the fix.
+- **The deployed endpoint is public and calls a real model.** Plan calls are small and bounded at
+  three per request, and repeat questions hit the plan cache, but there is no auth or rate limit
+  in front of it — acceptable for a review link, not for anything else.
 - **Cross-tabs above the record-mode threshold need both dimensions closed**, and refuse
   otherwise. Sampling a secondary dimension would need per-cell confirmation to stay exact.
 - **Condition grouping is literal.** MeSH hierarchy would let "cancer" roll up its subtypes
