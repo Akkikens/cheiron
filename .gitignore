@@ -37,3 +37,6 @@ data/raw/
 .vscode/
 .vercel
 .env*
+
+# --- personal, not part of the submission ---
+DEMO-SCRIPT.md
