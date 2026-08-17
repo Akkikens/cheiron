@@ -584,3 +584,58 @@ async def test_a_truncated_overlapping_dimension_also_discloses_the_cut(
     assert coverage.groupby_semantics == "overlapping"
     assert "Showing 4 of 10 phase values" in (coverage.overlap_note or "")
     assert "multi-valued" in (coverage.overlap_note or "")  # the overlap note is still there
+
+
+async def test_an_absent_breakdown_does_not_leave_a_breakdown_chart(settings: Settings) -> None:
+    """Clearing `cells` was not enough: `select_chart` reads the plan, not the cells.
+
+    So an empty cross-tab still chose grouped/stacked and `render` stamped a constant "all"
+    series on every row — a chart advertising a breakdown the data does not contain.
+    """
+    import json
+
+    from app.analyze import analyze
+    from app.ctg.vocab import VocabularyCache
+    from app.models.plan import ChartType
+    from app.models.request import AnalyzeRequest
+
+    # Small enough for record mode, where the cross-tab is computed in process — the studies
+    # carry a phase but no status, so no (phase, status) pair exists to plot.
+    upstream = Upstream(
+        {None: 3, "AREA[Phase]MISSING": 0},
+        studies_by_predicate={
+            "": [
+                {
+                    "protocolSection": {
+                        "identificationModule": {"nctId": f"NCT{i:08d}"},
+                        "designModule": {"phases": ["PHASE2"]},
+                        "statusModule": {},
+                    }
+                }
+                for i in range(3)
+            ]
+        },
+    )
+    plan_payload = a_plan(
+        secondary_group_by=GroupBy(dimension="overall_status"),
+        filters=StudyFilter(intervention="pembrolizumab"),
+    ).model_dump(mode="json")
+
+    async def completer(messages: Any, schema: Any) -> str:
+        return json.dumps(plan_payload)
+
+    response = await analyze(
+        AnalyzeRequest(query="phase by status", drug_name="Pembrolizumab"),
+        transport=stub_transport(settings, upstream.async_handler),
+        vocabulary_cache=VocabularyCache(),
+        settings=settings.model_copy(update={"llm_enabled": True, "openai_api_key": "sk-test"}),
+        completer=completer,
+    )
+
+    assert response.visualization.type not in (
+        ChartType.GROUPED_BAR_CHART,
+        ChartType.STACKED_BAR_CHART,
+    )
+    for row in response.visualization.data:
+        assert "series" not in row and "stack" not in row
+    assert any("absent from the data" in warning for warning in response.meta.warnings)

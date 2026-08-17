@@ -694,7 +694,9 @@ def test_narrowing_keeps_the_overlap_exact_and_capping_does_not() -> None:
     assert narrowed.overlap_note is not None
     assert "overlap -" not in narrowed.overlap_note
     assert "overlap 955" in narrowed.overlap_note  # 1,955 memberships against 1,000 studies
-    assert "counted but not plotted" in narrowed.overlap_note
+    assert "not plotted in this chart" in narrowed.overlap_note
+    # Names no cause: on the cross-tab path the drop may be an absent pairing, not the cap.
+    assert "options.max_buckets caps the axis" not in narrowed.overlap_note
     assert narrowed.bucket_sum == 597  # only the three drawn
 
     capped = build_coverage(replace(full, aggregation_capped=True), REGISTRY["phase"])[0]
@@ -748,3 +750,46 @@ def test_a_real_overlap_is_still_quantified() -> None:
 
     assert "overlap 515" in note
     assert "2,758 studies" in note and "3,273 bucket memberships" in note
+
+
+def test_a_sampled_undercount_is_not_blamed_on_upstream() -> None:
+    """A sample can simply never meet some corpus labels.
+
+    `with_value` is computed over the whole corpus, so memberships falling short is the expected
+    outcome of sampling — not the per-bucket counts disagreeing with the MISSING probe. Blaming
+    upstream told a reader to distrust exact confirmed counts because the sampler had not seen
+    everything.
+    """
+    from app.engine.coverage import build_coverage
+
+    sampled = BucketSet(
+        buckets=[Bucket(key="Cancer", label="Cancer", value=100, exactness="exact")],
+        total=5_000,
+        unclassified=0,
+        semantics="overlapping",
+        mode="sampled_then_confirmed",
+        sample_size=3_000,
+        sample_coverage=0.6,
+    )
+
+    coverage, warnings = build_coverage(sampled, REGISTRY["condition"])
+
+    assert "came from a sample" in (coverage.overlap_note or "")
+    assert not any("suspect" in warning for warning in warnings)
+
+
+def test_an_exhaustive_undercount_is_still_an_upstream_fault() -> None:
+    """The genuine reconciliation warning must survive the sampling carve-out."""
+    from app.engine.coverage import build_coverage
+
+    exhaustive = BucketSet(
+        buckets=[Bucket(key="K0", label="K0", value=100, exactness="exact")],
+        total=1_000,
+        unclassified=0,
+        semantics="overlapping",
+        mode="server_counts",
+    )
+
+    _, warnings = build_coverage(exhaustive, REGISTRY["phase"])
+
+    assert any("disagree" in warning for warning in warnings)

@@ -131,6 +131,9 @@ async def analyze(
     studies: list[dict[str, Any]] | None = None
     panels: list[Panel] | None = None
     cells: list[CrossCell] | None = None
+    # What the chart is chosen from. Diverges from `plan` only when a requested breakdown turns
+    # out to be absent from the data, so `meta` keeps reporting what was asked for.
+    chart_plan = plan
     try:
         if len(plan.series) > MAX_SERIES:
             raise too_many_series(len(plan.series))
@@ -212,11 +215,18 @@ async def analyze(
             f"showing the {dim.key} distribution alone."
         )
         cells = None
+        # Clearing `cells` alone was not enough: `select_chart` reads the *plan*, so it still
+        # returned grouped/stacked and `render` stamped a constant "all" series on every row —
+        # a chart advertising a breakdown the data does not contain, which is the fabrication
+        # class this service exists to prevent. Worse for a stacked pick over an overlapping
+        # primary: that is precisely what the viz_hint safety rule refuses to allow.
+        # `plan` itself is left intact so `meta.plan` under explain still shows what was asked.
+        chart_plan = plan.model_copy(update={"secondary_group_by": None})
 
     coverage, coverage_warnings = build_coverage(
         bucketset, dim, counts_studies=plan.metric is Metric.STUDY_COUNT
     )
-    chart_type, chart_warnings = select_chart(plan, bucketset, dim, request.options)
+    chart_type, chart_warnings = select_chart(chart_plan, bucketset, dim, request.options)
 
     if (
         plan.intent is Intent.NETWORK
@@ -239,7 +249,7 @@ async def analyze(
             chart_type,
         )
     else:
-        visualization, render_warnings = render(plan, bucketset, chart_type, dim, ctx)
+        visualization, render_warnings = render(chart_plan, bucketset, chart_type, dim, ctx)
 
     retrieve_ms = int((time.perf_counter() - t1) * 1000)
 

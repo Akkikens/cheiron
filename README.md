@@ -529,8 +529,8 @@ for that step — including the two commits that say a shipped chart was a fabri
   that cannot fail is worse than no test.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **Six adversarial review passes found 42 defects** the spec-derived tests could not see — nine,
-  twelve, six, five, four, then six. The tail is the interesting part: later passes kept finding
+- **Seven adversarial review passes found 45 defects** the spec-derived tests could not see —
+  nine, twelve, six, five, four, six, then three. The tail is the interesting part: later passes kept finding
   defects *introduced by the previous pass's fixes*, and they clustered. Five consecutive fixes to
   `coverage.py` each introduced the next, because the file tracked one flag for two different
   events — an aggregation that stopped early, where nothing beyond the cap was ever counted, and

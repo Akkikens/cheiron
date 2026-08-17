@@ -83,6 +83,7 @@ def build_coverage(
             memberships=result_memberships,
             with_value=with_value,
             capped=capped,
+            sampled=bucketset.sample_size is not None,
             warnings=warnings,
         )
         if partial:
@@ -129,14 +130,23 @@ def _truncation_note(bucketset: BucketSet, dim: Dimension) -> str:
             f"Showing {shown:,} {dim.key} values; further values exist but were cut by "
             f"options.max_buckets before they were counted, so their number is unknown. {tail}"
         )
+    # Deliberately does not name a cause. On the cross-tab path the dropped categories may be
+    # ones that paired with no secondary value rather than ones the cap cut, and naming
+    # options.max_buckets there is the same wrong-cause failure as the empty-cross-tab case.
     return (
-        f"Showing {shown:,} of {counted:,} {dim.key} values, the rest counted but not plotted "
-        f"because options.max_buckets caps the axis; {tail}"
+        f"Showing {shown:,} of {counted:,} {dim.key} values counted; the rest are not plotted "
+        f"in this chart. {tail}"
     )
 
 
 def _overlap_note(
-    dim: Dimension, *, memberships: int, with_value: int, capped: bool, warnings: list[str]
+    dim: Dimension,
+    *,
+    memberships: int,
+    with_value: int,
+    capped: bool,
+    sampled: bool,
+    warnings: list[str],
 ) -> str:
     """SPEC §4.3's exact shape, with the integers computed rather than described.
 
@@ -164,8 +174,20 @@ def _overlap_note(
             f"result, against {with_value:,} studies carrying a value."
         )
 
+    if overlap < 0 and sampled:
+        # A sample can simply never meet some corpus labels, while `with_value` is computed over
+        # the whole corpus — so memberships falling short is the expected outcome of sampling,
+        # not a fault. Blaming upstream here told a reader to distrust exact confirmed counts
+        # because the sampler had not seen everything.
+        return (
+            f"{field} is multi-valued, so buckets overlap and do not sum to the total. The "
+            f"overlap cannot be quantified because the labels came from a sample: "
+            f"{memberships:,} memberships were counted across the labels confirmed, against "
+            f"{with_value:,} studies carrying a value."
+        )
+
     if overlap < 0:
-        # Not a truncation effect — every value was counted — so this is upstream disagreeing
+        # Every value was counted and it still does not add up, so this is upstream disagreeing
         # with itself, which is exactly the case the partition branch warns about.
         warnings.append(
             f"{dim.key} counted {memberships:,} bucket memberships across a complete bucket "
