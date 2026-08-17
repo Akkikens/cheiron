@@ -36,3 +36,4 @@ data/raw/
 .idea/
 .vscode/
 .vercel
+.env*

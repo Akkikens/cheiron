@@ -39,11 +39,11 @@ docker run --rm -p 8000:8000 -e LLM_ENABLED=false cheiron
 Then open **<http://localhost:8000>** for a demo UI that renders whatever the API returns, or
 POST to `/analyze` directly. FastAPI's generated docs are at `/docs`.
 
-**Deployed: <https://cheiron-sand.vercel.app>** — same routes, running the model. A free-form
+**Deployed: <https://cheiron-sigma.vercel.app>** — same routes, running the model. A free-form
 question the keyword planner cannot answer comes back with `meta.planner: "llm"`:
 
 ```bash
-curl -s https://cheiron-sand.vercel.app/analyze -H 'content-type: application/json' \
+curl -s https://cheiron-sigma.vercel.app/analyze -H 'content-type: application/json' \
   -d '{"query":"Are glioblastoma trials mostly run by industry or by universities?"}'
 # planner "llm" · bar_chart · Glioblastoma Trials by Lead sponsor class · 2,251 studies
 ```
