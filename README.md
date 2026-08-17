@@ -529,10 +529,18 @@ for that step — including the two commits that say a shipped chart was a fabri
   that cannot fail is worse than no test.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **A late review pass found nine defects** the spec-derived tests could not see, including one
-  that returned a fabricated comparison chart. Each is now pinned by a regression test in
-  `tests/unit/test_review_fixes.py`. They are listed there rather than quietly fixed, because
-  the pattern in them is more useful than the fixes.
+- **Three adversarial review passes found 27 defects** the spec-derived tests could not see —
+  nine, then twelve, then six. Each is pinned by a regression test in
+  `tests/unit/test_review_fixes.py` and `tests/unit/test_multi.py`, and named in the commit that
+  fixed it rather than quietly corrected, because the pattern in them is more useful than the
+  fixes. Two shipped fabricated numbers: a comparison chart labelled with one series' name over
+  the base filter's counts, and study counts relabelled as participant counts. Others were
+  disclosure failures of the same family the service exists to prevent — a sample coverage that
+  averaged two ratios over different populations and claimed 45.5% where the truth was 1.9%, and
+  a chart that plotted three of ten categories while `meta.coverage` reconciled as complete.
+- **Running it found what reading it did not.** `scripts/showcase.py` caught two bugs on its
+  first run — stacking read the wrong dimension's partition flag, and a capped bucket list was
+  reported as an unexplained reconciliation failure — both in code the tests covered.
 
 **Deliberate design versus generated code.** The architecture is deliberate and was decided
 before implementation: the plan-only LLM boundary, the three-mode preflight and the reason the
