@@ -453,6 +453,7 @@ def _encoding(
         "field": metric.value,
         "type": "quantitative",
         "label": _metric_label(metric),
+        "unit": _metric_unit(metric),
     }
 
     if chart_type is ChartType.BAR_CHART:
@@ -488,6 +489,7 @@ def _encoding(
                 "field": metric.value,
                 "type": "quantitative",
                 "label": _metric_label(metric),
+                "unit": _metric_unit(metric),
             },
             "label": {"field": f"{dim.key}_label", "type": "nominal", "label": dim.label},
         }
@@ -601,6 +603,7 @@ def _choropleth(
                     "field": plan.metric.value,
                     "type": "quantitative",
                     "label": _metric_label(plan.metric),
+                    "unit": _metric_unit(plan.metric),
                 },
             },
             data=rows,
@@ -649,6 +652,11 @@ def _subtitle(bucketset: BucketSet, ctx: RunContext) -> str:
 def _date_of(timestamp: str) -> str:
     """`2026-08-14T09:00:05` → `2026-08-14`."""
     return timestamp.split("T", 1)[0] if timestamp else date.today().isoformat()
+
+
+def _metric_unit(metric: Metric) -> str:
+    """Trials or people — the two metrics count different things and a bare number hides which."""
+    return "studies" if metric is Metric.STUDY_COUNT else "participants"
 
 
 def _metric_label(metric: Metric) -> str:

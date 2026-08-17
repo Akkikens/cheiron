@@ -177,3 +177,23 @@ def test_title_drops_the_axis_qualifier_but_the_axis_keeps_it() -> None:
     # "Study type" keeps its qualifier: "Trials by Type" would say less, not more.
     assert _dimension_noun(REGISTRY["study_type"]) == "Study type"
     assert _dimension_noun(REGISTRY["country"]) == "Country"
+
+
+async def test_axes_state_what_they_count(settings: Settings, vocab: Vocabulary) -> None:
+    """ "1,750" is ambiguous between trials and people; the two metrics mean exactly those."""
+    from app.models.plan import Metric
+
+    ctx = await a_ctx(settings, vocab)
+    buckets = [Bucket(key="PHASE2", label="Phase 2", value=1750, exactness="exact")]
+
+    counted, _ = render(a_plan(), a_bucketset(buckets), ChartType.BAR_CHART, REGISTRY["phase"], ctx)
+    enrolled, _ = render(
+        a_plan(metric=Metric.ENROLLMENT_SUM),
+        a_bucketset(buckets),
+        ChartType.BAR_CHART,
+        REGISTRY["phase"],
+        ctx,
+    )
+
+    assert counted.encoding["y"]["unit"] == "studies"
+    assert enrolled.encoding["y"]["unit"] == "participants"

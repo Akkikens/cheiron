@@ -47,6 +47,13 @@ class Channel(BaseModel):
     sort: list[str] | None = None
     format: str | None = None
     scale: str | None = None
+    unit: str | None = None
+    """What the numbers count, for an axis or a KPI: "studies" or "participants".
+
+    SPEC §6.2 gives `kpi` a `unit`; the brief asks for whatever a frontend needs to render
+    appropriately. "1,750" on a bar chart is ambiguous between trials and people, and the two
+    metrics in this service mean exactly those two different things.
+    """
     bin_start: str | None = None
     bin_end: str | None = None
     """SPEC §6.2: a histogram's x channel names the row keys holding each bar's range.

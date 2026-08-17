@@ -41,6 +41,19 @@ GOLDEN: list[tuple[dict[str, object], str, str]] = [
         "distribution",
         "phase",
     ),
+    # The six shapes added when the deterministic planner was broadened. They matter to A5
+    # specifically because they sit *above* the original five in precedence, so a keyword added
+    # carelessly to any of them would silently re-route a question that used to work.
+    ({"query": "Which interventions are studied together?"}, "network", "intervention_name"),
+    ({"query": "Which drugs are used with this one?"}, "network", "intervention_name"),
+    ({"query": "How big are these trials?"}, "histogram", "enrollment_count"),
+    ({"query": "What is the typical enrollment?"}, "histogram", "enrollment_count"),
+    ({"query": "How many are industry funded?"}, "distribution", "sponsor_class"),
+    ({"query": "Are these interventional or observational?"}, "distribution", "study_type"),
+    ({"query": "What types of intervention are studied?"}, "distribution", "intervention_type"),
+    ({"query": "Which conditions are studied?"}, "distribution", "condition"),
+    # The collision that broadening introduced: a trend question that names a study type.
+    ({"query": "What is the growth in interventional trials since 2020?"}, "trend", "start_year"),
 ]
 
 
