@@ -793,3 +793,136 @@ def test_an_exhaustive_undercount_is_still_an_upstream_fault() -> None:
     _, warnings = build_coverage(exhaustive, REGISTRY["phase"])
 
     assert any("disagree" in warning for warning in warnings)
+
+
+# --- Fable review pass ------------------------------------------------------------------------
+
+
+def test_a_viz_hint_cannot_stack_a_multi_valued_secondary() -> None:
+    """The override check read the wrong dimension, so it waved through the chart it guards.
+
+    Segments are the *secondary* dimension's values. Reading the primary's partition flag let a
+    stacked hint through on status-by-phase — segments summing past their bar, which SPEC §6.1
+    calls non-overridable.
+    """
+    from app.render.registry import select_chart
+
+    bucketset = BucketSet(
+        buckets=[Bucket(key="k", label="k", value=1, exactness="exact")],
+        total=1,
+        unclassified=0,
+        semantics="partition",
+        mode="complete_records",
+    )
+    plan = AnalysisPlan(
+        intent=Intent.DISTRIBUTION,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="overall_status"),
+        secondary_group_by=GroupBy(dimension="phase"),
+        viz_hint=ChartType.STACKED_BAR_CHART,
+        interpretation="Recruitment status broken down by phase.",
+    )
+
+    chart, warnings = select_chart(plan, bucketset, REGISTRY["overall_status"], Options())
+
+    assert chart is ChartType.GROUPED_BAR_CHART
+    assert any("safety rule" in warning for warning in warnings)
+
+
+def test_a_single_valued_secondary_may_still_be_stacked_by_hint() -> None:
+    """The rule must not become a blanket refusal — phase-by-status genuinely stacks."""
+    from app.render.registry import select_chart
+
+    bucketset = BucketSet(
+        buckets=[Bucket(key="k", label="k", value=1, exactness="exact")],
+        total=1,
+        unclassified=0,
+        semantics="overlapping",
+        mode="complete_records",
+    )
+    plan = AnalysisPlan(
+        intent=Intent.DISTRIBUTION,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="phase"),
+        secondary_group_by=GroupBy(dimension="overall_status"),
+        viz_hint=ChartType.STACKED_BAR_CHART,
+        interpretation="Phase broken down by recruitment status.",
+    )
+
+    chart, _ = select_chart(plan, bucketset, REGISTRY["phase"], Options())
+
+    assert chart is ChartType.STACKED_BAR_CHART
+
+
+def test_a_sampled_overlap_is_never_asserted_as_exact() -> None:
+    """Memberships from a sample are a lower bound, so the overlap is unknowable either way.
+
+    Guarding only the negative case left the exact branches free to state "overlap 5", or to
+    assert "no study carries more than one" when the sums happened to match.
+    """
+    from app.engine.coverage import build_coverage
+
+    def note(bucket_value: int) -> str:
+        bucketset = BucketSet(
+            buckets=[Bucket(key="Cancer", label="Cancer", value=bucket_value, exactness="exact")],
+            total=1_000,
+            unclassified=0,
+            semantics="overlapping",
+            mode="sampled_then_confirmed",
+            sample_size=600,
+            sample_coverage=0.6,
+        )
+        return build_coverage(bucketset, REGISTRY["condition"])[0].overlap_note or ""
+
+    exact_match = note(1_000)  # memberships == studies with a value
+    over = note(1_400)  # memberships exceed them
+
+    for text in (exact_match, over):
+        assert "came from a sample" in text
+        assert "no study in this result set carries more than one" not in text
+    assert "overlap 400" not in over
+
+
+async def test_a_model_failure_never_echoes_the_provider_message(vocab: Vocabulary) -> None:
+    """An OpenAI 401 quotes the partially-masked key back, and this reaches an anonymous caller."""
+    from app.models.request import AnalyzeRequest
+    from app.planner.llm import LLMPlanner
+
+    async def failing(messages: Any, schema: Any) -> str:
+        raise RuntimeError("Error code: 401 - Incorrect API key provided: sk-proj-ABCD****WXYZ")
+
+    warnings: list[str] = []
+    await LLMPlanner(failing, warnings=warnings).plan(
+        AnalyzeRequest(query="How many trials by phase?"), vocab
+    )
+
+    joined = " ".join(warnings)
+    assert "RuntimeError" in joined  # the type is useful and safe
+    assert "sk-proj" not in joined
+    assert "Incorrect API key" not in joined
+
+
+def test_the_deterministic_planner_discloses_an_unapplied_subject() -> None:
+    """Charting the whole registry because the question named a subject we ignored, silently."""
+    from app.analyze import _unapplied_subject_warning
+    from app.planner.base import PlanResult
+
+    plan = AnalysisPlan(
+        intent=Intent.DISTRIBUTION,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="phase"),
+        interpretation="Distribution across phases.",
+    )
+    unfiltered = PlanResult(plan=plan, planner="heuristic_fallback", attempts=1)
+    filtered = PlanResult(
+        plan=plan.model_copy(update={"filters": StudyFilter(condition="melanoma")}),
+        planner="heuristic_fallback",
+        attempts=1,
+    )
+    from_model = PlanResult(plan=plan, planner="llm", attempts=1)
+
+    assert "every study in the registry" in " ".join(
+        _unapplied_subject_warning(unfiltered.plan, unfiltered)
+    )
+    assert _unapplied_subject_warning(filtered.plan, filtered) == []
+    assert _unapplied_subject_warning(from_model.plan, from_model) == []

@@ -93,6 +93,7 @@ async def analyze(
         warnings=planner_warnings,
     )
     plan, assumptions = enforce_hard_constraints(plan_result.plan, request)
+    planner_warnings.extend(_unapplied_subject_warning(plan, plan_result))
     plan_ms = int((time.perf_counter() - t0) * 1000)
 
     errors = validate_plan(plan, vocab)
@@ -287,6 +288,35 @@ async def analyze(
     if result_cache is not None:
         result_cache.set(cache_key, response)
     return response
+
+
+def _unapplied_subject_warning(plan: AnalysisPlan, result: PlanResult) -> list[str]:
+    """Say so when the deterministic planner charted everything because it named nothing.
+
+    The keyword planner deliberately never mines the question for a subject: guessing a drug
+    name produces a confident wrong filter. But staying silent about it produced something
+    worse — "trials by phase for melanoma" charted all 598,690 studies in the registry with an
+    empty `filters_applied` and no warning at all. Not guessing is a design choice; not
+    disclosing is a wrong answer with a straight face.
+    """
+    if result.planner != "heuristic_fallback":
+        return []
+    if any(
+        (
+            plan.filters.condition,
+            plan.filters.intervention,
+            plan.filters.sponsor,
+            plan.filters.term,
+            plan.filters.country,
+        )
+    ):
+        return []
+    return [
+        "No subject filter was applied: the deterministic planner takes filters only from the "
+        "structured fields, never from the question text, so anything named in the question "
+        "itself was ignored and this counts every study in the registry. Pass drug_name, "
+        "condition or sponsor to narrow it."
+    ]
 
 
 async def _plan(

@@ -150,7 +150,7 @@ never fails because the model misbehaved.
     "title": "Pembrolizumab Trials by Phase",
     "subtitle": "2,927 studies · ClinicalTrials.gov, data as of 2026-08-14",
     "encoding": {
-      "x": { "field": "phase", "type": "nominal", "label": "Trial phase",
+      "x": { "field": "phase", "type": "ordinal", "label": "Trial phase",
              "sort": ["EARLY_PHASE1","PHASE1","PHASE2","PHASE3","PHASE4","NA","MISSING"] },
       "y": { "field": "study_count", "type": "quantitative", "label": "Number of trials" }
     },
@@ -180,7 +180,8 @@ never fails because the model misbehaved.
 | `data` | object[] | Flat rows for most types; `{nodes, edges}` for `network_graph` |
 | `annotations` | object[]? | e.g. `{type: "note", text: "Buckets overlap; see meta.coverage"}` |
 
-**Encoding channel** = `{field, type, label, sort?, format?, scale?}` where `type` ∈
+**Encoding channel** = `{field, type, label, sort?, format?, scale?, unit?, bin_start?, bin_end?}`
+where `type` ∈
 `nominal | ordinal | quantitative | temporal | geo`. `field` always names a key present in
 every `data` row. A renderer needs nothing beyond `encoding` + `data`.
 
@@ -266,7 +267,7 @@ zero results yields an empty `table` plus a warning, never a fabricated row.
 | 502 | `upstream_error` | ClinicalTrials.gov returned an error |
 | 504 | `upstream_timeout` | Budget exceeded |
 | 503 | `upstream_circuit_open` | Breaker open; `retry_after_seconds` set |
-| 429 | `rate_limited` | Local limiter |
+| 429 | `rate_limited` | **Upstream** asked us to slow down; `retry_after_seconds` carries its header value verbatim. The local token bucket waits rather than rejecting, so it never produces this |
 | 500 | `internal_error` | Unhandled server-side fault. Generic message; `request_id` is the only actionable content. Never attributed to upstream — our bugs are ours |
 
 ```jsonc
@@ -384,7 +385,7 @@ Deterministic function of `(intent, dimension cardinality, series count, partiti
 | `intent=comparison`, 2–4 series | `grouped_bar_chart` |
 | `secondary_group_by` present, partition | `stacked_bar_chart` |
 | `secondary_group_by` present, **not** partition | `grouped_bar_chart` (stacking would imply a false whole) |
-| `intent=geo` | `choropleth_map` (+ `bar_chart` fallback) |
+| `intent=geo` | `choropleth_map`, or `table` when too many country names have no ISO-3166 code to place |
 | `intent=network`, `complete_records` | `network_graph` |
 | `intent=scatter`, two quantitative metrics | `scatter_plot` |
 | `intent=histogram`, binned quantitative | `histogram` |

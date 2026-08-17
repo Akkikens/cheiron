@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.analyze import analyze
 from app.cache import RESULT_TTL_SECONDS, TTLStore
@@ -87,6 +88,11 @@ def create_app(
         }
 
     demo_page = Path(__file__).resolve().parent.parent / "demo" / "index.html"
+    demo_assets = demo_page.parent / "assets"
+    if demo_assets.is_dir():
+        # The mark and wordmark, served as files rather than inlined: a favicon has to be
+        # reachable from /docs too, and base64 in the page would not be.
+        app.mount("/assets", StaticFiles(directory=demo_assets), name="assets")
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def demo() -> HTMLResponse:

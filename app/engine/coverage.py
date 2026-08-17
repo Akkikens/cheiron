@@ -174,11 +174,12 @@ def _overlap_note(
             f"result, against {with_value:,} studies carrying a value."
         )
 
-    if overlap < 0 and sampled:
-        # A sample can simply never meet some corpus labels, while `with_value` is computed over
-        # the whole corpus — so memberships falling short is the expected outcome of sampling,
-        # not a fault. Blaming upstream here told a reader to distrust exact confirmed counts
-        # because the sampler had not seen everything.
+    if sampled:
+        # A sample can never be shown to have met every corpus label, so `memberships` is a
+        # lower bound and the overlap is not computable in *either* direction. Guarding only the
+        # negative case left the exact branches to claim "overlap 5", or worse to assert "no
+        # study carries more than one" when the sums happened to match — the same invented claim
+        # about the data, on the other side of zero.
         return (
             f"{field} is multi-valued, so buckets overlap and do not sum to the total. The "
             f"overlap cannot be quantified because the labels came from a sample: "

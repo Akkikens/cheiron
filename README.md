@@ -125,10 +125,18 @@ infers, and a model that contradicts them is overruled and the override recorded
 }
 ```
 
-**Encoding channel** = `{field, type, label, sort?, format?, scale?}` where `type` ∈
-`nominal | ordinal | quantitative | temporal | geo`. `field` always names a key present in
-**every** `data` row — a response model validator enforces it, so a renderer needs nothing
-beyond `encoding` + `data`.
+**Encoding channel** = `{field, type, label, sort?, format?, scale?, unit?, bin_start?, bin_end?}`
+where `type` ∈ `nominal | ordinal | quantitative | temporal | geo`. `field` always names a key
+present in **every** `data` row — a response model validator enforces it, so a renderer needs
+nothing beyond `encoding` + `data`.
+
+Two row conventions a renderer should know, because guessing them is exactly what §3 exists to
+prevent:
+
+- **`<field>_label`** — every categorical row carries a human label beside its key, so
+  `{"phase": "PHASE2", "phase_label": "Phase 2"}`. Plot the key, print the label.
+- **`series` / `stack`** — the breakdown channel on grouped and stacked charts names a row key
+  of the same name, and `<channel>_key` holds the raw value where the label differs.
 
 | Chart type | Channels |
 |---|---|
@@ -354,7 +362,7 @@ Plan: `intent=histogram`, `group_by=enrollment_count`, glioblastoma trials start
 ```jsonc
 { "type": "histogram", "title": "Glioblastoma Trials by Enrollment",
   "encoding": {
-    "x": { "field": "enrollment_count", "type": "quantitative", "label": "Enrollment",
+    "x": { "field": "enrollment_count", "type": "ordinal", "label": "Enrollment",
            "bin_start": "bin_start", "bin_end": "bin_end",
            "sort": ["0-10","11-50","51-100","101-500","501-1,000","1,001-5,000","5,001+"] },
     "y": { "field": "study_count", "type": "quantitative", "label": "Number of trials" }
@@ -418,7 +426,7 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
 - **The model plans; it never counts.** The cost is that a question outside the plan schema
   cannot be answered at all. The benefit is that no number in any response can be hallucinated,
   and the schema is small enough to validate exhaustively against the live vocabulary.
-- **A deterministic planner exists alongside the LLM**, covering five template question shapes.
+- **A deterministic planner exists alongside the LLM**, covering eleven template question shapes.
   It is the reference implementation the LLM path is tested against, and it keeps the service
   fully functional with no API key. The trade-off is duplicated intent logic.
 - **`aggFilters` is never used.** `aggFilters=phase:na` returns 0 silently with HTTP 200 while

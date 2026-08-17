@@ -22,6 +22,7 @@ The hard constraints in the request are stated in the prompt *and* stamped on af
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Protocol, cast
@@ -37,6 +38,8 @@ from app.models.request import AnalyzeRequest
 from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
 from app.planner.validate import validate_plan
+
+logger = logging.getLogger("cheiron.planner")
 
 MAX_ATTEMPTS: Final = 3
 """One initial call plus at most two repairs — SPEC §3 and §7's model-call budget."""
@@ -115,7 +118,12 @@ class LLMPlanner:
                 raw = await self._complete(messages, schema)
             except Exception as exc:
                 # Any model failure degrades to the fallback; it never fails the request.
-                return await self._degrade(req, vocab, f"{type(exc).__name__}: {exc}")
+                #
+                # The exception *type* only. Provider messages quote the request back — an
+                # OpenAI 401 includes the partially-masked API key — and this string reaches an
+                # anonymous caller through meta.warnings. The detail belongs in the log.
+                logger.warning("planner: model call failed", exc_info=exc)
+                return await self._degrade(req, vocab, type(exc).__name__)
 
             result = _parse(raw, vocab)
             if result.plan is not None:

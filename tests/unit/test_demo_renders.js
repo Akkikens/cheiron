@@ -133,7 +133,9 @@ const count = (svg, tag) => (svg.match(new RegExp(`<${tag}\\b`, "g")) || []).len
   };
   const out = R.network(viz);
   assert.strictEqual(count(out, "circle"), 3, "one node per node");
-  assert.strictEqual(count(out, "line"), 2, "one line per edge");
+  // Edges are drawn as quadratic paths curving toward the centre, so a dense graph reads as a
+  // weave rather than a scribble. Still exactly one element per edge.
+  assert.strictEqual(count(out, "path"), 2, "one path per edge");
   assert.ok(out.includes("condition") && out.includes("intervention"), "legend names both groups");
 }
 

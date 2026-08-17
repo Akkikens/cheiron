@@ -32,7 +32,7 @@ def select_chart(
         )
 
     if plan.viz_hint is not None and plan.viz_hint is not chosen:
-        if _hint_is_safe(plan.viz_hint, dim, bucketset.mode, cardinality, options):
+        if _hint_is_safe(plan.viz_hint, dim, bucketset.mode, cardinality, options, plan):
             if _is_tie(plan.viz_hint, chosen):
                 chosen = plan.viz_hint
             else:
@@ -58,9 +58,9 @@ def _primary(
     series_count: int,
     warnings: list[str],
 ) -> ChartType:
-    # SPEC §6.1 table, in order. Scatter/histogram rows are kept for the contract but are
-    # unreachable: T05 rejects those intents before we get here, and the sweep test below
-    # asserts neither type is ever returned from any reachable input.
+    # SPEC §6.1 table, in order. Scatter and histogram became reachable when `enrollment_count`
+    # joined the registry; the sweep test asserts they are still never returned for the intents
+    # that are not theirs.
 
     if plan.intent is Intent.TREND and is_temporal(dim):
         return ChartType.TIME_SERIES
@@ -129,12 +129,19 @@ def _hint_is_safe(
     mode: AggregationMode,
     cardinality: int,
     options: Options,
+    plan: AnalysisPlan,
 ) -> bool:
     if hint is ChartType.NETWORK_GRAPH and mode != "complete_records":
         return False
-    # Pie/donut are not ChartTypes (T04 drops them at parse). Stacking a non-partition implies
-    # a false whole, so a stacked_bar_chart hint on overlapping semantics is unsafe.
-    if hint is ChartType.STACKED_BAR_CHART and not dim.partition:
+    # Pie/donut are not ChartTypes (T04 drops them at parse). Stacking a non-partition implies a
+    # false whole.
+    #
+    # The flag to read is the dimension whose values become the *segments*: the secondary when
+    # there is one, the primary otherwise. Reading the primary let a stacked hint through on a
+    # status-by-phase cross-tab — segments that sum to more than their bar, which is the exact
+    # chart §6.1 calls non-overridable, waved past by the override check itself.
+    segment_dim = resolve(plan.secondary_group_by.dimension) if plan.secondary_group_by else dim
+    if hint is ChartType.STACKED_BAR_CHART and not segment_dim.partition:
         return False
     return not (hint in (ChartType.SCATTER_PLOT, ChartType.HISTOGRAM) and not QUANTITATIVE_KEYS)
 

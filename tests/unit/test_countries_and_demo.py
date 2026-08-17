@@ -277,3 +277,27 @@ async def test_scatter_titles_name_both_axes(settings: Settings, vocab: Vocabula
 
     assert viz.title == "Glioblastoma Trials: enrollment by start year"
     assert "by Enrollment:" not in viz.title  # the awkward double-naming this replaced
+
+
+def test_the_page_ships_a_favicon_and_serves_it(settings: Settings, enums_handler: Handler) -> None:
+    """The mark is a file, not a data URI, so /docs gets an icon too."""
+    source = DEMO.read_text(encoding="utf-8")
+    assert 'rel="icon"' in source
+    assert "/assets/mark-32.png" in source
+
+    app = create_app(settings, transport=stub_transport(settings, enums_handler))
+    with TestClient(app) as client:
+        icon = client.get("/assets/mark-32.png")
+        touch = client.get("/assets/mark-180.png")
+
+    assert icon.status_code == 200 and icon.headers["content-type"] == "image/png"
+    assert touch.status_code == 200
+    assert icon.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_the_demo_escapes_values_on_the_way_out() -> None:
+    """`fmt` values are numbers today, which is a property of upstream's schema, not this page."""
+    source = DEMO.read_text(encoding="utf-8")
+    fmt_line = next(line for line in source.splitlines() if line.startswith("const fmt ="))
+
+    assert "esc(" in fmt_line
