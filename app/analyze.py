@@ -8,7 +8,7 @@ the route is where it becomes an HTTP response.
 from __future__ import annotations
 
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -262,14 +262,19 @@ async def analyze(
 
     retrieve_ms = int((time.perf_counter() - t1) * 1000)
 
-    warnings = [
-        *planner_warnings,
-        *ctx.warnings,
-        *bucketset.warnings,
-        *coverage_warnings,
-        *chart_warnings,
-        *render_warnings,
-    ]
+    # A comparison runs N independent analyses, and any caveat that is about the dimension
+    # rather than the series lands once per series. Three identical sentences in `assumptions`
+    # read as three separate findings, so exact repeats collapse while order is preserved.
+    warnings = _unique(
+        [
+            *planner_warnings,
+            *ctx.warnings,
+            *bucketset.warnings,
+            *coverage_warnings,
+            *chart_warnings,
+            *render_warnings,
+        ]
+    )
 
     retrieved_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     total_ms = plan_ms + retrieve_ms
@@ -278,7 +283,7 @@ async def analyze(
         interpretation=plan.interpretation,
         planner=plan_result.planner,
         filters_applied=_filters_applied(plan),
-        assumptions=list(ctx.assumptions),
+        assumptions=_unique(ctx.assumptions),
         warnings=warnings,
         total_matching_studies=bucketset.total,
         coverage=coverage,
@@ -348,6 +353,11 @@ async def _plan(
     return await LLMPlanner(completer, cache=plan_cache, warnings=warnings).plan(request, vocab)
 
 
+def _unique(lines: Sequence[str]) -> list[str]:
+    """Drop exact repeats, keep first-seen order."""
+    return list(dict.fromkeys(lines))
+
+
 async def _run_series(
     plan: AnalysisPlan,
     dim: Dimension,
@@ -362,6 +372,10 @@ async def _run_series(
         effective = overlay_filters(plan.filters, filters)
         series_plan = plan.model_copy(update={"filters": effective, "series": []})
         pre = await preflight(series_plan, dim, ctx, threshold=settings.record_mode_threshold)
+        # Each series has its own filters, so each raises its own caveats. Dropping them meant a
+        # sponsor comparison never disclosed that sponsor names are free text, even though the
+        # same question asked without series did. `_unique` collapses the repeats.
+        ctx.assumptions.extend(pre.assumptions)
         if pre.total == 0:
             return BucketSet(
                 buckets=[],

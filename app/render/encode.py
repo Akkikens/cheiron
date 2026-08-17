@@ -1,8 +1,13 @@
 """Turn a `BucketSet` into a `Visualization`. SPEC §6.2, §4.1.
 
-Titles are format strings over the plan: never model prose. The Other rollup is the one place
-this module can silently drop data, so the annotation names both the rolled-in category count
-and the summed value; a bare omission would be `truncated: true` wearing a different hat.
+Titles are format strings over the plan: never model prose.
+
+Axis truncation is the one place this module can drop data, and it happens only where several
+series or a cross-tab share one axis. Each of those annotations names how many values are not
+plotted and why; a bare omission would be `truncated: true` wearing a different hat. Single-axis
+charts arrive already capped by the aggregation mode, which reports what it dropped in
+`meta.coverage` rather than inventing a residual category here: for a time axis or a map an
+"Other" bar has no meaning, and for a sampled open vocabulary its value is not knowable.
 """
 
 from __future__ import annotations
@@ -64,14 +69,7 @@ def render(
     if chart_type is ChartType.CHOROPLETH_MAP:
         return _choropleth(plan, bucketset, dim, ctx, warnings)
 
-    if chart_type is ChartType.HISTOGRAM:
-        # No Other rollup on a histogram. Bins are contiguous and there are only seven, so a
-        # rollup produces an "OTHER" bar with no edges of its own: `_bin_edges` would hand it
-        # [0, ∞), a full-width bar overlapping every real one.
-        buckets, rollup_annotation = list(bucketset.buckets), None
-    else:
-        buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
-    rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in buckets]
+    rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in bucketset.buckets]
     if chart_type is ChartType.HISTOGRAM:
         # A histogram bar spans a range, so the renderer needs its edges, not just its label.
         for row in rows:
@@ -88,12 +86,9 @@ def render(
         for row in rows:
             row.setdefault(channel, "all")
     rows = _sort_rows(rows, dim, ctx.vocab, chart_type, plan.metric)
-    rows = _other_last(rows, dim.key)
 
     encoding = _encoding(chart_type, dim, plan.metric, ctx.vocab, rows)
     annotations: list[dict[str, Any]] = []
-    if rollup_annotation is not None:
-        annotations.append(rollup_annotation)
     if bucketset.semantics == "overlapping":
         annotations.append({"type": "note", "text": "Buckets overlap; see meta.coverage"})
 
@@ -161,13 +156,13 @@ def render_panels(
     if dropped:
         annotations.append(
             {
-                "type": "rollup",
+                "type": "truncation",
                 "text": (
                     f"Showing the top {len(keys)} {dim.key} values across all series; "
                     f"{dropped} further value(s) are not plotted because options.max_buckets "
                     f"is {ctx.options.max_buckets}."
                 ),
-                "rolled_categories": dropped,
+                "omitted_categories": dropped,
             }
         )
     annotations.append(
@@ -246,13 +241,13 @@ def render_crosstab(
     if hidden:
         annotations.append(
             {
-                "type": "rollup",
+                "type": "truncation",
                 "text": (
                     f"Showing the top {len(kept_primary)} {dim.key} values by total; "
                     f"{len(hidden)} further value(s) are not plotted because options.max_buckets "
                     f"is {ctx.options.max_buckets}."
                 ),
-                "rolled_categories": len(hidden),
+                "omitted_categories": len(hidden),
             }
         )
     annotations.append(
@@ -417,36 +412,6 @@ def _label_for(dim: Dimension, key: str, vocab: Vocabulary) -> str:
     return key if dim.enum_name is None else vocab.label(dim.enum_name, key)
 
 
-def _maybe_rollup(
-    buckets: list[Bucket], max_buckets: int
-) -> tuple[list[Bucket], dict[str, Any] | None]:
-    """Keep the top `max_buckets - 1` by value; roll the rest into Other.
-
-    The annotation names both N and the summed value. Omitting either is how a silent drop
-    dresses itself as disclosure.
-    """
-    if len(buckets) <= max_buckets:
-        return list(buckets), None
-
-    ordered = sorted(buckets, key=lambda b: (-b.value, b.key))
-    kept = ordered[: max_buckets - 1]
-    rolled = ordered[max_buckets - 1 :]
-    rolled_sum = sum(bucket.value for bucket in rolled)
-    other = Bucket(
-        key="OTHER",
-        label=f"Other ({len(rolled)} categories)",
-        value=rolled_sum,
-        exactness="exact",
-    )
-    annotation = {
-        "type": "rollup",
-        "text": (f"Other rolls up {len(rolled)} categories totalling {int(rolled_sum):,} studies."),
-        "rolled_categories": len(rolled),
-        "rolled_value": int(rolled_sum),
-    }
-    return [*kept, other], annotation
-
-
 def _row(bucket: Bucket, dim: Dimension, metric: Metric, vocab: Vocabulary) -> dict[str, Any]:
     metric_field = metric.value
     row: dict[str, Any] = {
@@ -501,13 +466,6 @@ def _sort_rows(
 
     # Open vocabulary: value descending, key ascending for stability.
     return sorted(rows, key=lambda row: (-float(row[metric_field]), str(row[key])))
-
-
-def _other_last(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-    """OTHER is a rollup residue, not a peer category: it always trails the axis."""
-    kept = [row for row in rows if row.get(key) != "OTHER"]
-    other = [row for row in rows if row.get(key) == "OTHER"]
-    return kept + other
 
 
 def _encoding(

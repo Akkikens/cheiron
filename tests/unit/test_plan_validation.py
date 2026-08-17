@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from app.config import Settings
 from app.ctg.client import CTGClient
 from app.ctg.vocab import Vocabulary
+from app.errors import CheironError, ErrorCode
 from app.models.plan import (
     AnalysisPlan,
     Bin,
@@ -349,6 +350,32 @@ def test_interpretation_with_a_bare_small_number(vocab: Vocabulary) -> None:
     assert "5" in only_error(plan, vocab)
 
 
+def test_digits_that_are_part_of_a_name_are_not_smuggled_counts(vocab: Vocabulary) -> None:
+    """The rule exists to stop invented counts, not to ban the digit 1 from a drug name.
+
+    Every one of these was a 422 for a plan that was correct: `PD-1` and `SARS-CoV-2` name what
+    the caller asked about, and `phase 1/2` names two buckets of the axis.
+    """
+    for interpretation in (
+        "Distribution of trials of PD-1 inhibitors across trial phases.",
+        "Distribution of SARS-CoV-2 trials across trial phases.",
+        "Distribution of phase 1/2 trials across trial phases.",
+    ):
+        plan = a_plan(interpretation=interpretation)
+        assert validate_plan(plan, vocab) == [], interpretation
+
+
+def test_a_number_next_to_a_counted_thing_is_still_rejected(vocab: Vocabulary) -> None:
+    """Relaxing the rule must not relax the thing the rule is for."""
+    plan = a_plan(interpretation="Distribution of the 412 trials across trial phases.")
+
+    assert "412" in only_error(plan, vocab)
+
+    plan = a_plan(interpretation="Distribution of 1,204 studies across trial phases.")
+
+    assert "1,204" in only_error(plan, vocab)
+
+
 def test_years_in_the_interpretation_are_allowed(vocab: Vocabulary) -> None:
     plan = a_plan(
         filters=StudyFilter(start_year=2015, end_year=2025),
@@ -529,8 +556,12 @@ def test_every_structured_field_is_enforceable() -> None:
     assert len(assumptions) == 9
 
 
-def test_series_filters_are_left_alone() -> None:
-    """Stamping the request's sponsor onto both series would collapse the comparison."""
+def test_a_comparison_cannot_vary_a_field_the_request_pinned() -> None:
+    """Both ways of resolving this conflict fabricate, so it is refused instead.
+
+    Honouring the overlays reports Merck's and Pfizer's counts while `filters_applied` says
+    Novartis. Stamping Novartis over both draws one number as two differently labelled bars.
+    """
     plan = a_plan(
         intent=Intent.COMPARISON,
         series=[
@@ -540,13 +571,32 @@ def test_series_filters_are_left_alone() -> None:
     )
     request = AnalyzeRequest(query="compare sponsors by phase", sponsor="Novartis")
 
+    with pytest.raises(CheironError) as caught:
+        enforce_hard_constraints(plan, request)
+
+    assert caught.value.code is ErrorCode.UNPLANNABLE_QUERY
+    assert len(caught.value.details) == 2
+    assert "the request pins sponsor to 'Novartis'" in caught.value.details[0]["message"]
+
+
+def test_series_overlays_on_unpinned_fields_survive_enforcement() -> None:
+    """The hard constraint ANDs into every series; the varied field is still the series' own."""
+    plan = a_plan(
+        intent=Intent.COMPARISON,
+        series=[
+            SeriesSpec(label="Merck", filters=StudyFilter(sponsor="Merck Sharp & Dohme LLC")),
+            SeriesSpec(label="Pfizer", filters=StudyFilter(sponsor="Pfizer")),
+        ],
+    )
+    request = AnalyzeRequest(query="compare sponsors by phase", drug_name="pembrolizumab")
+
     enforced, _ = enforce_hard_constraints(plan, request)
 
     assert [series.filters.sponsor for series in enforced.series] == [
         "Merck Sharp & Dohme LLC",
         "Pfizer",
     ]
-    assert enforced.filters.sponsor == "Novartis"
+    assert enforced.filters.intervention == "pembrolizumab"
 
 
 def test_overlay_filters_ands_shared_hard_constraints_into_each_series() -> None:

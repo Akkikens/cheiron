@@ -585,6 +585,75 @@ async def test_too_many_buckets_are_clamped_and_the_clamp_is_reported(settings: 
     assert any("top 3 by count" in warning for warning in bucketset.warnings)
     assert any("max_buckets is 3" in warning for warning in bucketset.warnings)
 
+    # Counted, then not drawn. That is `omitted_*`, never `aggregation_capped`: the three
+    # survivors plus the three omitted account for every membership, so the overlap stays exact.
+    assert bucketset.aggregation_capped is False
+    assert bucketset.omitted_buckets == 3
+    assert bucketset.omitted_value == float(
+        A1_BUCKETS["NA"] + A1_BUCKETS["EARLY_PHASE1"] + A1_BUCKETS["PHASE4"]
+    )
+
+    coverage, _ = build_coverage(bucketset, dim)
+    assert f"contribute {A1_SUM:,} bucket memberships (overlap {A1_OVERLAP})" in (
+        coverage.overlap_note or ""
+    )
+    assert "cannot be quantified" not in (coverage.overlap_note or "")
+
+
+async def test_a_closed_vocabulary_is_never_trimmed_to_fit_the_budget(settings: Settings) -> None:
+    """A phase chart missing phases is the partial aggregation SPEC §4.5 refuses to render.
+
+    Trimming to fit would draw a plausible chart with bars silently absent; failing is correct.
+    """
+    upstream = a1_upstream()
+    ctx = await a_context(settings, upstream, budget=4)
+    plan, dim = a1_plan(), REGISTRY["phase"]
+    pre = await preflight(plan, dim, ctx, threshold=2_000)
+
+    with pytest.raises(BudgetExhausted):
+        await counts.run(plan, dim, ctx, params=pre.params, total=pre.total)
+
+
+async def test_a_long_trend_counts_the_recent_window_instead_of_failing(settings: Settings) -> None:
+    """A 40-year span needs 42 requests against a 40-request budget.
+
+    A time axis can shrink honestly, so it keeps the most recent years and says the earlier ones
+    were never counted. Ranking years by count instead would leave a hole mid-line.
+    """
+    years = range(1986, 2026)
+    span = "AREA[StartDate]RANGE[1986-01-01,2025-12-31]"
+    # Every fan-out predicate is ANDed with the base filter's own span, so the stub keys are the
+    # composed expressions the client actually sends.
+    predicates: dict[str | None, int] = {
+        f"(({span}) AND (AREA[StartDate]RANGE[{year}-01-01,{year}-12-31]))": year - 1985
+        for year in years
+    }
+    predicates[f"(({span}) AND (AREA[StartDate]MISSING))"] = 0
+    predicates[span] = 2_735
+    predicates[None] = 2_735
+    upstream = Upstream(predicates)
+    ctx = await a_context(
+        settings, upstream, options=Options(include_citations=False, max_buckets=40)
+    )
+    plan = AnalysisPlan(
+        intent=Intent.TREND,
+        filters=StudyFilter(start_year=1986, end_year=2025),
+        group_by=GroupBy(dimension="start_year"),
+        metric=Metric.STUDY_COUNT,
+        interpretation="Pembrolizumab trials by start year.",
+    )
+    dim = REGISTRY["start_year"]
+    pre = await preflight(plan, dim, ctx, threshold=2_000)
+
+    bucketset = await counts.run(plan, dim, ctx, params=pre.params, total=pre.total)
+
+    assert [bucket.key for bucket in bucketset.buckets] == [str(y) for y in range(1989, 2026)]
+    # Never counted, so no denominator exists for them: this one *is* capped.
+    assert bucketset.aggregation_capped is True
+    assert bucketset.omitted_buckets == 0
+    assert any("most recent 37" in warning for warning in bucketset.warnings)
+    assert any("not counted at all" in warning for warning in bucketset.warnings)
+
 
 # --- year dimensions ------------------------------------------------------------------------
 

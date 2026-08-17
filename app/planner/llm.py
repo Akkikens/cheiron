@@ -25,6 +25,7 @@ import json
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Final, Protocol, cast
 
 from pydantic import ValidationError
@@ -69,7 +70,12 @@ executed by deterministic code that queries ClinicalTrials.gov and computes ever
 
 The `interpretation` field describes what WILL BE COMPUTED, in descriptive terms: for example \
 "Annual count of interventional trials studying pembrolizumab, 2015-2025." It must never state \
-a result, and must never contain a number other than a year.
+a result. Digits are allowed only when they belong to something the caller named (COVID-19, \
+PD-1, phase 1/2) or when they are a year you also put in `filters.start_year` or \
+`filters.end_year`. Any other number is rejected as a smuggled count.
+
+Resolve relative dates against today's date, given below, into `filters.start_year` and \
+`filters.end_year`. "The last five years" and "since 2020" are year bounds, not prose.
 
 Choose `group_by.dimension` from the available dimensions. Do not invent dimension names.
 Leave `viz_hint` null unless the question explicitly asks for a chart form; the chart is chosen \
@@ -129,7 +135,10 @@ class LLMPlanner:
         return self._warnings
 
     async def plan(self, req: AnalyzeRequest, vocab: Vocabulary) -> PlanResult:
-        key = plan_cache_key(req.query, _structured_hints(req))
+        # The year is part of the key because it is part of the prompt: a plan for "the last
+        # five years" cached in December must not be served in January.
+        today = date.today()
+        key = plan_cache_key(req.query, _structured_hints(req) | {"_year": today.year})
         if self._cache is not None:
             cached = self._cache.get(key)
             if cached is not None:
@@ -138,7 +147,7 @@ class LLMPlanner:
         schema = AnalysisPlan.json_schema_strict()
         messages: list[dict[str, str]] = [
             {"role": "system", "content": _system_prompt(vocab)},
-            {"role": "user", "content": _user_prompt(req)},
+            {"role": "user", "content": _user_prompt(req, today)},
         ]
 
         for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -240,8 +249,10 @@ def _system_prompt(vocab: Vocabulary) -> str:
     )
 
 
-def _user_prompt(req: AnalyzeRequest) -> str:
-    lines = [f"Question: {req.query}"]
+def _user_prompt(req: AnalyzeRequest, today: date) -> str:
+    # The model has no clock. Without this, "the last five years" was planned against whatever
+    # year the training data made likely, and the resulting bounds were quietly wrong.
+    lines = [f"Today is {today.isoformat()}.", "", f"Question: {req.query}"]
     hints = {field: value for field, value in _structured_hints(req).items() if value}
     if hints:
         lines.append("")

@@ -140,13 +140,14 @@ def aggregate(
 
     buckets: list[Bucket] = []
     ordered_keys = _ordered_keys(counts, dim, ctx)
-    complete = len(ordered_keys) <= ctx.options.max_buckets
+    omitted_keys: list[str] = []
     if len(ordered_keys) > ctx.options.max_buckets:
         warnings.append(
             f"{dim.key} has {len(ordered_keys)} buckets; showing the top "
             f"{ctx.options.max_buckets} by count because options.max_buckets is "
             f"{ctx.options.max_buckets}."
         )
+        omitted_keys = ordered_keys[ctx.options.max_buckets :]
         ordered_keys = ordered_keys[: ctx.options.max_buckets]
 
     for key in ordered_keys:
@@ -172,7 +173,12 @@ def aggregate(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
-        aggregation_capped=not complete,
+        # Never capped in this mode. Record aggregation walks the entire result set in memory, so
+        # every category was counted exactly; `max_buckets` only decides how many get drawn. That
+        # makes dropped keys `omitted_*`, which keeps the overlap arithmetic exact, rather than
+        # `aggregation_capped`, which would claim their memberships are unknowable.
+        omitted_buckets=len(omitted_keys),
+        omitted_value=float(sum(counts[key] for key in omitted_keys)),
         warnings=warnings,
     )
 

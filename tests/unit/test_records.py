@@ -445,3 +445,24 @@ async def test_enrollment_above_threshold_refuses(
 
     assert excinfo.value.code is ErrorCode.UNPLANNABLE_QUERY
     assert "enrollment" in excinfo.value.message.lower()
+
+
+async def test_record_mode_narrows_without_ever_claiming_it_capped(settings: Settings) -> None:
+    """Every category was counted in memory, so dropped ones are known exactly, not unknowable."""
+    studies = [
+        _study(f"NCT{i:08d}", sponsor=f"Sponsor {i % 5}", phases=["PHASE2"]) for i in range(20)
+    ]
+    upstream = PagingUpstream(studies)
+    ctx = await records_context(
+        settings, upstream, options=Options(max_buckets=2, include_citations=False)
+    )
+    plan = distribution_plan(group_by=GroupBy(dimension="lead_sponsor"))
+
+    bucketset = records.aggregate(studies, plan, REGISTRY["lead_sponsor"], ctx)
+
+    assert len(bucketset.buckets) == 2
+    assert bucketset.aggregation_capped is False
+    assert bucketset.omitted_buckets == 3
+    # The three omitted sponsors carry 4 studies each, and nothing is lost from the arithmetic.
+    assert bucketset.omitted_value == 12.0
+    assert bucketset.bucket_sum + int(bucketset.omitted_value) == 20

@@ -435,8 +435,8 @@ async def test_a_comparison_respects_max_buckets_across_series(
 
     assert {row["phase"] for row in viz.data} == {"K00", "K01", "K02"}
     assert len(viz.data) == 6  # three categories, both series each
-    rollup = next(a for a in (viz.annotations or []) if a["type"] == "rollup")
-    assert rollup["rolled_categories"] == 7
+    rollup = next(a for a in (viz.annotations or []) if a["type"] == "truncation")
+    assert rollup["omitted_categories"] == 7
 
 
 async def test_a_crosstab_respects_max_buckets(settings: Settings, vocab: Vocabulary) -> None:
@@ -465,8 +465,8 @@ async def test_a_crosstab_respects_max_buckets(settings: Settings, vocab: Vocabu
     )
 
     assert {row["phase"] for row in viz.data} == {"P0", "P1"}
-    rollup = next(a for a in (viz.annotations or []) if a["type"] == "rollup")
-    assert rollup["rolled_categories"] == 4
+    rollup = next(a for a in (viz.annotations or []) if a["type"] == "truncation")
+    assert rollup["omitted_categories"] == 4
 
 
 def test_merged_sample_coverage_describes_one_population() -> None:
@@ -639,3 +639,53 @@ async def test_an_absent_breakdown_does_not_leave_a_breakdown_chart(settings: Se
     for row in response.visualization.data:
         assert "series" not in row and "stack" not in row
     assert any("absent from the data" in warning for warning in response.meta.warnings)
+
+
+async def test_a_sponsor_comparison_discloses_the_free_text_caveat_once(settings: Settings) -> None:
+    """Series preflights raise caveats too, and they used to be thrown away.
+
+    A sponsor comparison never mentioned that sponsor names are free text, while the same
+    question asked without series did. Collecting them per series fixes that; deduplicating stops
+    one caveat from arriving twice and reading as two findings.
+    """
+    import json
+
+    from app.analyze import analyze
+    from app.ctg.vocab import VocabularyCache
+    from app.engine.basefilter import SPONSOR_ASSUMPTION
+    from app.models.request import AnalyzeRequest
+
+    merck = 'AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck"'
+    pfizer = 'AREA[LeadSponsorName]COVERAGE[FullMatch]"Pfizer"'
+    upstream = Upstream(
+        {
+            None: 40,
+            merck: 20,
+            pfizer: 20,
+            f"(({merck}) AND (AREA[Phase]PHASE2))": 12,
+            f"(({pfizer}) AND (AREA[Phase]PHASE2))": 8,
+            f"(({merck}) AND (AREA[Phase]MISSING))": 0,
+            f"(({pfizer}) AND (AREA[Phase]MISSING))": 0,
+        }
+    )
+    plan_payload = a_plan(
+        intent=Intent.COMPARISON,
+        series=[
+            SeriesSpec(label="Merck", filters=StudyFilter(sponsor="Merck")),
+            SeriesSpec(label="Pfizer", filters=StudyFilter(sponsor="Pfizer")),
+        ],
+    ).model_dump(mode="json")
+
+    async def completer(messages: Any, schema: Any) -> str:
+        return json.dumps(plan_payload)
+
+    response = await analyze(
+        AnalyzeRequest(query="compare Merck and Pfizer by phase"),
+        transport=stub_transport(settings, upstream.async_handler),
+        vocabulary_cache=VocabularyCache(),
+        settings=settings.model_copy(update={"llm_enabled": True, "openai_api_key": "sk-test"}),
+        completer=completer,
+    )
+
+    assert response.meta.assumptions.count(SPONSOR_ASSUMPTION) == 1
+    assert len(response.meta.assumptions) == len(set(response.meta.assumptions))

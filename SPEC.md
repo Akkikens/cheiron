@@ -90,7 +90,7 @@ silently does nothing is worse than an error.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `max_buckets` | int 1–100 | 20 | Max categories before "Other" rollup |
+| `max_buckets` | int 1–100 | 20 | Max categories plotted. The rest are still counted; `meta.coverage` reports how many and their total |
 | `include_citations` | bool | `true` | Attach per-datum source references |
 | `citations_per_datum` | int 0–10 | 3 | Sampled NCT references per datum |
 | `explain` | bool | `false` | Include the `AnalysisPlan` and upstream URL log in `meta` |

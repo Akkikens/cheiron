@@ -239,3 +239,26 @@ async def test_tight_budget_cuts_citations_before_counts(settings: Settings) -> 
         "not for citations" in warning or "Citation fetches cut" in warning
         for warning in bucketset.warnings
     )
+
+
+@pytest.mark.asyncio
+async def test_citations_follow_the_buckets_that_survive_narrowing(settings: Settings) -> None:
+    """Evidence has to land on the bars that get drawn.
+
+    Fetching in axis order and narrowing afterwards spent the citation budget on buckets the
+    chart then dropped, so a truncated chart showed uncited bars while asking for citations.
+    """
+    upstream = a1_upstream(studies_by_predicate=a1_studies())
+    ctx = await a_context(
+        settings,
+        upstream,
+        options=Options(max_buckets=3, include_citations=True, citations_per_datum=3),
+        budget=80,
+    )
+    plan, dim = a1_plan(), REGISTRY["phase"]
+    pre = await preflight(plan, dim, ctx, threshold=2_000)
+
+    bucketset = await counts.run(plan, dim, ctx, params=pre.params, total=pre.total)
+
+    assert [bucket.key for bucket in bucketset.buckets] == ["PHASE1", "PHASE2", "PHASE3"]
+    assert all(bucket.citations for bucket in bucketset.buckets)

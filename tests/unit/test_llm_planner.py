@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from datetime import date
 from typing import Any
 
 import pytest
@@ -102,6 +103,28 @@ async def test_the_published_schema_is_what_the_model_is_given(vocab: Vocabulary
 
     assert captured[0] == AnalysisPlan.json_schema_strict()
     assert captured[0]["additionalProperties"] is False
+
+
+async def test_the_model_is_told_todays_date(vocab: Vocabulary) -> None:
+    """ "The last five years" is unanswerable without a clock, and the model does not have one."""
+    model = Model(json.dumps(a_plan_payload()))
+
+    await LLMPlanner(model).plan(a_request("trials in the last five years"), vocab)
+
+    assert f"Today is {date.today().isoformat()}." in model.prompts[0][1]["content"]
+
+
+async def test_a_cached_plan_does_not_outlive_the_year_it_was_planned_in(
+    vocab: Vocabulary,
+) -> None:
+    """The date is in the prompt, so it has to be in the key."""
+    from app.cache import plan_cache_key
+
+    hints = {"drug_name": "pembrolizumab"}
+
+    assert plan_cache_key("last five years", hints | {"_year": 2025}) != plan_cache_key(
+        "last five years", hints | {"_year": 2026}
+    )
 
 
 # --- the repair loop ------------------------------------------------------------------------

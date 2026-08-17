@@ -102,7 +102,7 @@ infers, and a model that contradicts them is overruled and the override recorded
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `max_buckets` | int 1–100 | `20` | Categories before an "Other" rollup |
+| `max_buckets` | int 1–100 | `20` | Categories plotted; any beyond it are counted and reported in `meta.coverage` |
 | `include_citations` | bool | `true` | Attach per-datum source references |
 | `citations_per_datum` | int 0–10 | `3` | Sampled NCT references per datum |
 | `explain` | bool | `false` | Include the `AnalysisPlan` and upstream URL log in `meta` |
@@ -119,7 +119,7 @@ infers, and a model that contradicts them is overruled and the override recorded
     "subtitle": "2,927 studies · ClinicalTrials.gov, data as of 2026-08-14",
     "encoding": { "x": {…}, "y": {…} },
     "data":  [ … ],                   // flat rows; {nodes, edges} for network_graph
-    "annotations": [ … ]              // rollups, pruning, overlap notes
+    "annotations": [ … ]              // truncation, pruning, overlap notes
   },
   "meta": { … }
 }
@@ -159,7 +159,7 @@ prevent:
 | `planner` | `llm` \| `llm_repaired` \| `heuristic_fallback` |
 | `filters_applied` | The filters that actually ran. On a comparison this is `{"series": [{"label", ...filters}]}`, one entry per series, each showing the base filters with that series' overlay applied |
 | `assumptions` | Choices a reader would otherwise have to guess at (§5) |
-| `warnings` | Every degradation, rollup, sample, and downgrade, with numbers |
+| `warnings` | Every degradation, truncation, sample, and downgrade, with numbers |
 | `total_matching_studies` | Exact count for the base filter |
 | `coverage` | Below: present on every response |
 | `provenance` | `source`, `api_version`, `data_timestamp`, `retrieved_at` |

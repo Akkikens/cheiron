@@ -11,6 +11,7 @@ import re
 from typing import TYPE_CHECKING
 
 from app.engine.dimensions import QUANTITATIVE_KEYS, REGISTRY, TEMPORAL_KEYS, is_temporal
+from app.errors import CheironError, ErrorCode
 from app.models.plan import AnalysisPlan, Intent, Metric, StudyFilter
 
 if TYPE_CHECKING:
@@ -27,6 +28,52 @@ ENUM_BY_FILTER_FIELD: dict[str, str] = {
 }
 
 _NUMBER = re.compile(r"\d[\d,]*")
+
+# A standalone number, not one glued into a name. `PD-1`, `COVID-19` and `SARS-CoV-2` are things
+# the caller asked about; rejecting them as smuggled counts turned valid plans into 422s.
+# `/` is a boundary character too, so `phase 1/2` reads as one label rather than as the number 2
+# sitting next to the word "trials".
+_STANDALONE = re.compile(r"(?<![\w/-])(\d{1,3}(?:,\d{3})+|\d+)(?![\w/-])")
+
+# What makes a number a *count* rather than a quantity: it is counting the things this service
+# counts. "the top 10 countries" is a plan detail; "10 trials" is a result the model invented.
+_COUNTED_THING = re.compile(
+    r"\s*(?:\w+\s+){0,2}?(trials?|stud(?:y|ies)|records?|results?|participants?|patients?"
+    r"|enroll(?:ed|ment))\b",
+    re.IGNORECASE,
+)
+
+# The other tell: a quantifier in front of it. "the top 5 sponsors" and "about 400" are both
+# claims about the result, even though neither number touches the word "trials".
+_QUANTIFIER = re.compile(
+    r"\b(?:top|first|last|about|approximately|roughly|around|over|under|nearly|n\s*=)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _smuggled_counts(residue: str, allowed_years: set[str]) -> list[str]:
+    """Numbers in `residue` that read as results rather than as part of a name.
+
+    `residue` has already had every value the caller supplied stripped out, so what remains is
+    the model's own prose. Three things are counts: thousands-separated numbers, runs of four or
+    more digits that are not one of this plan's filter years, and any number directly describing
+    a quantity of trials.
+    """
+    smuggled: list[str] = []
+    for match in _STANDALONE.finditer(residue):
+        token = match.group(1)
+        if "," in token:
+            smuggled.append(token)
+            continue
+        if token in allowed_years:
+            continue
+        if (
+            len(token) >= 4
+            or _COUNTED_THING.match(residue, match.end())
+            or _QUANTIFIER.search(residue[: match.start()])
+        ):
+            smuggled.append(token)
+    return smuggled
 
 
 def _dimension_options() -> str:
@@ -264,13 +311,14 @@ def _check_interpretation(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
 
     # Years are only allowed when they appear as filter bounds — otherwise "2024 trials" is a
     # year-shaped count the model invented.
-    allowed_years = _filter_years(plan)
-    smuggled = [token for token in _NUMBER.findall(residue) if token not in allowed_years]
+    smuggled = _smuggled_counts(residue, _filter_years(plan))
     if smuggled:
         errors.append(
-            f"interpretation contains the number(s) {', '.join(smuggled)}, which are not years "
-            f"from the plan's filters. The interpretation describes what was counted; it must "
-            f"never state a count, because the counts come from the API after planning."
+            f"interpretation contains the number(s) {', '.join(smuggled)}, which state a result "
+            f"rather than name something the caller asked about. The interpretation describes "
+            f"what will be counted; it must never state a count, because the counts come from "
+            f"the API after planning. A year is allowed when it is one of this plan's own "
+            f"filters.start_year or filters.end_year."
         )
     return errors
 
@@ -295,7 +343,7 @@ def _check_labels_for_smuggled_counts(plan: AnalysisPlan, vocab: Vocabulary) -> 
         residue = series.label
         for allowed in sorted((q for q in quotable if q != series.label), key=len, reverse=True):
             residue = re.sub(re.escape(allowed), " ", residue, flags=re.IGNORECASE)
-        smuggled = [token for token in _NUMBER.findall(residue) if not _is_year(token)]
+        smuggled = _smuggled_counts(residue, _filter_years(plan))
         if smuggled:
             errors.append(
                 f"series label {series.label!r} contains the number(s) {', '.join(smuggled)}. "
@@ -320,10 +368,6 @@ def _check_labels_for_smuggled_counts(plan: AnalysisPlan, vocab: Vocabulary) -> 
                     f"Use the search string alone; counts come from the API after planning."
                 )
     return errors
-
-
-def _is_year(token: str) -> bool:
-    return token.isdigit() and len(token) == 4 and MIN_YEAR <= int(token) <= MAX_YEAR
 
 
 def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
@@ -365,8 +409,12 @@ def overlay_filters(base: StudyFilter, overlay: StudyFilter) -> StudyFilter:
     """AND hard-constraint filters into a series overlay. Overlay fields win when set.
 
     A comparison varies one field across series (usually sponsor). Everything else on
-    `plan.filters` — especially request hard constraints like `drug_name` — must still apply,
-    or `meta.filters_applied` and the upstream query disagree.
+    `plan.filters`, especially request hard constraints like `drug_name`, must still apply, or
+    `meta.filters_applied` and the upstream query disagree.
+
+    Letting the overlay win is only safe because `enforce_hard_constraints` has already refused
+    any plan whose series vary a field the request pinned. Without that guard, this line is how
+    a caller's own filter gets silently overwritten.
     """
     merged = base.model_dump()
     for field_name in StudyFilter.model_fields:
@@ -388,19 +436,26 @@ def enforce_hard_constraints(
     the model is not allowed to contradict them. Runs on every plan from every planner, so an
     LLM that ignores `drug_name` cannot change which studies are counted.
 
-    `series[].filters` are left alone here; at aggregate time each series is merged with
-    `plan.filters` via `overlay_filters`, so shared hard constraints AND into every series
-    while series-local overlays (the varied field) still win.
+    Series overlays are checked here too. At aggregate time each series is merged with
+    `plan.filters` via `overlay_filters`, where an overlay value *wins*. So a request pinning
+    `sponsor="Novartis"` alongside a comparison of Merck against Pfizer had each series quietly
+    overriding the caller's own constraint: the numbers were Merck's and Pfizer's while
+    `meta.filters_applied` reported Novartis. Stamping the pinned value over both overlays
+    instead is no better, because it draws one number as two differently labelled bars. Both are
+    fabrications, so a request that pins the field a comparison varies is refused outright.
 
     Returns the plan and the overrides it made, for `meta.assumptions`.
     """
     overrides: dict[str, object] = {}
     assumptions: list[str] = []
+    pinned: dict[str, object] = {}
 
     for request_field, filter_field in HARD_CONSTRAINTS.items():
         requested = getattr(req, request_field)
         if requested is None or (isinstance(requested, list) and not requested):
             continue
+
+        pinned[filter_field] = requested
 
         current = getattr(plan.filters, filter_field)
         if current == requested:
@@ -414,9 +469,46 @@ def enforce_hard_constraints(
             + "."
         )
 
+    _reject_overlay_conflicts(plan, pinned)
+
     if not overrides:
-        return plan, []
+        return plan, assumptions
 
     return plan.model_copy(update={"filters": plan.filters.model_copy(update=overrides)}), (
         assumptions
     )
+
+
+def _reject_overlay_conflicts(plan: AnalysisPlan, pinned: dict[str, object]) -> None:
+    """Refuse a comparison that varies a field the request has pinned.
+
+    Fields the request did not pin are untouched: they still AND into every series, which is the
+    whole point of `overlay_filters`.
+    """
+    conflicts: list[dict[str, object]] = []
+
+    for index, series in enumerate(plan.series):
+        for field_name, requested in pinned.items():
+            overlay_value = getattr(series.filters, field_name)
+            empty = overlay_value is None or (isinstance(overlay_value, list) and not overlay_value)
+            if empty or overlay_value == requested:
+                continue
+            conflicts.append(
+                {
+                    "field": f"series[{index}].filters.{field_name}",
+                    "value": overlay_value,
+                    "message": (
+                        f"series {series.label!r} filters {field_name} to {overlay_value!r}, but "
+                        f"the request pins {field_name} to {requested!r}. A comparison cannot "
+                        f"vary a field the request has fixed: drop the request's constraint to "
+                        f"compare across it, or compare a different field."
+                    ),
+                }
+            )
+
+    if conflicts:
+        raise CheironError(
+            ErrorCode.UNPLANNABLE_QUERY,
+            "The request's filters contradict the comparison it asks for.",
+            details=conflicts,
+        )

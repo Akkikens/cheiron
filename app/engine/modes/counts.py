@@ -61,8 +61,21 @@ async def run(
     warnings: list[str] = []
 
     max_buckets = ctx.options.max_buckets
-    # Count every live key, then keep the top `max_buckets` by value. Truncating by display
-    # order before the fan-out kept rare early enum values and dropped high-count ones.
+    temporal = is_temporal(dim)
+
+    # Counting every key and ranking afterwards is right for a closed enum, where the key list
+    # is small and bounded. It is wrong twice over for a time axis: the key list grows with the
+    # span, so a 40-year trend needed 42 requests against a 40-request budget and failed as a
+    # timeout before issuing one; and ranking years by count would drop the quietest years from
+    # the middle of a line, which is not a truncation a time series can survive.
+    #
+    # So a temporal axis truncates before the fan-out, keeping the most recent window, and says
+    # the values beyond it were never counted. Everything else keeps its whole key list.
+    keys, pre_warning = _fit_keys_to_budget(keys, dim, ctx, temporal=temporal)
+    if pre_warning:
+        warnings.append(pre_warning)
+    counted_every_key = pre_warning is None
+
     count_cost = len(keys) + 2
     cite_fetches, cite_warnings = plan_citation_budget(
         ctx, bucket_count=len(keys), count_cost=count_cost
@@ -72,26 +85,35 @@ async def run(
     ctx.spend(count_cost + cite_fetches, f"the {dim.key} count fan-out")
 
     predicates = [(key, _predicate(dim, key, plan)) for key in keys]
+    by_predicate = dict(predicates)
     per_datum = ctx.options.citations_per_datum if cite_fetches else 0
 
-    # Citation coroutines are scheduled alongside the counts so they share the wave, not a
-    # second round trip after it. Sized for the post-truncation chart; the kept set is not
-    # known until counts land, so citations attach by key after ranking.
+    def citation_wave(
+        cite_for: Sequence[str],
+    ) -> tuple[list[Coroutine[Any, Any, tuple[list[Citation], str]]], list[str]]:
+        chosen = list(cite_for[:cite_fetches])
+        return [
+            sample_citations(
+                by_predicate[key],
+                dim,
+                per_datum,
+                ctx,
+                contributing=per_datum,
+                base_params=params,
+            )
+            for key in chosen
+        ], chosen
+
+    # Citations normally share the counts wave rather than costing a second round trip. They can
+    # only do that when every key is going to be drawn: otherwise the wave would fetch evidence
+    # for keys chosen in axis order, ranking would drop some of them, and the chart would show
+    # uncited bars while the citation budget was spent on bars nobody sees. When the key list is
+    # about to be narrowed, the fetch waits for the counts so it can follow the survivors.
+    defer_citations = len(keys) > max_buckets
     cite_coros: list[Coroutine[Any, Any, tuple[list[Citation], str]]] = []
     cite_keys: list[str] = []
-    for index, (key, predicate) in enumerate(predicates):
-        if index < cite_fetches:
-            cite_keys.append(key)
-            cite_coros.append(
-                sample_citations(
-                    predicate,
-                    dim,
-                    per_datum,
-                    ctx,
-                    contributing=per_datum,
-                    base_params=params,
-                )
-            )
+    if not defer_citations:
+        cite_coros, cite_keys = citation_wave(keys)
 
     count_coros: list[Coroutine[Any, Any, int]] = [
         ctx.client.count(with_predicate(params, predicate)) for _, predicate in predicates
@@ -105,6 +127,30 @@ async def run(
 
     await ctx.assert_data_unchanged()
 
+    by_key = {
+        key: (predicate, count)
+        for (key, predicate), count in zip(predicates, bucket_counts, strict=True)
+    }
+    if len(keys) > max_buckets:
+        ranked = sorted(by_key.items(), key=lambda item: (-item[1][1], item[0]))
+        kept = {key for key, _ in ranked[:max_buckets]}
+        warnings.append(
+            f"{dim.key} has {len(keys)} buckets; showing the top {max_buckets} by count "
+            f"because options.max_buckets is {max_buckets}."
+        )
+        # Display order among the survivors: ranking decides *which* buckets exist, never where
+        # they sit on the axis.
+        selected = [(key, *by_key[key]) for key in keys if key in kept]
+    else:
+        selected = [(key, *by_key[key]) for key in keys]
+
+    plotted = {sel[0] for sel in selected}
+    omitted = [key for key in keys if key not in plotted]
+
+    if defer_citations and cite_fetches:
+        cite_coros, cite_keys = citation_wave([sel[0] for sel in selected])
+        citation_results = await _gather_citations(cite_coros, cite_keys, warnings)
+
     if cite_fetches:
         ctx.assumptions.append(ORDERING_ASSUMPTION)
 
@@ -113,30 +159,6 @@ async def run(
         for index, key in enumerate(cite_keys)
         if index < len(citation_results)
     }
-
-    ranked = sorted(
-        zip(predicates, bucket_counts, strict=True),
-        key=lambda item: (-item[1], item[0][0]),
-    )
-    complete = len(ranked) <= max_buckets
-    if not complete:
-        warnings.append(
-            f"{dim.key} has {len(ranked)} buckets; showing the top {max_buckets} by count "
-            f"because options.max_buckets is {max_buckets}."
-        )
-        kept = {key for (key, _), _ in ranked[:max_buckets]}
-        # Keep clinical/chronological display order among the survivors — top-by-count only
-        # decides *which* buckets survive, not the axis order.
-        by_key = {
-            key: (predicate, count)
-            for (key, predicate), count in zip(predicates, bucket_counts, strict=True)
-        }
-        selected = [(key, by_key[key][0], by_key[key][1]) for key in keys if key in kept]
-    else:
-        selected = [
-            (key, predicate, count)
-            for (key, predicate), count in zip(predicates, bucket_counts, strict=True)
-        ]
 
     buckets: list[Bucket] = []
     for key, _, count in selected:
@@ -164,7 +186,14 @@ async def run(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
-        aggregation_capped=not complete,
+        # Two different truncations, and they are not interchangeable. Keys dropped before the
+        # fan-out were never counted, so no denominator exists and the overlap is unknowable:
+        # that is `aggregation_capped`. Keys counted and then not plotted are known exactly, so
+        # they travel as `omitted_*` and the overlap arithmetic stays true. Stamping the second
+        # as the first is the coverage-flag defect this file has produced four times before.
+        aggregation_capped=not counted_every_key,
+        omitted_buckets=len(omitted),
+        omitted_value=float(sum(by_key[key][1] for key in omitted)),
         warnings=warnings,
     )
 
@@ -212,6 +241,35 @@ async def _gather_citations(
         else:
             out.append(result)
     return out
+
+
+def _fit_keys_to_budget(
+    keys: list[str], dim: Dimension, ctx: RunContext, *, temporal: bool
+) -> tuple[list[str], str | None]:
+    """Trim the key list to what the request can actually afford to count.
+
+    Returns the keys to fan out over and a warning when anything was dropped uncounted.
+    """
+    if not temporal:
+        # A closed vocabulary is never trimmed to fit. Its key list is small and bounded, and a
+        # phase chart missing two phases is the partial aggregation SPEC §4.5 refuses to render:
+        # if the budget cannot cover it, `ctx.spend` raises and the caller gets a 504 saying so.
+        return keys, None
+
+    # +2 for the MISSING probe and the post-wave timestamp recheck.
+    affordable = max(1, ctx.upstream_budget - ctx.spent - 2)
+    limit = min(ctx.options.max_buckets, affordable)
+    if len(keys) <= limit:
+        return keys, None
+
+    # The most recent window, because a trend question is asked about now. Dropping the quietest
+    # years instead, which ranking by count would do, puts a hole in the middle of a line.
+    kept = keys[-limit:]
+    return kept, (
+        f"{dim.key} spans {len(keys)} periods; counting the most recent {limit} of them. "
+        f"options.max_buckets is {ctx.options.max_buckets} and the request budget allows "
+        f"{affordable} bucket counts, so earlier periods were not counted at all."
+    )
 
 
 def _bucket_keys(plan: AnalysisPlan, dim: Dimension, ctx: RunContext) -> list[str]:

@@ -1,4 +1,4 @@
-"""Visualization encoding: Other rollup, titles, sort order. SPEC §4.1, §6.2."""
+"""Visualization encoding: titles, sort order, axis truncation. SPEC §4.1, §6.2."""
 
 from __future__ import annotations
 
@@ -93,8 +93,13 @@ async def test_phase_axis_is_clinically_ordered(settings: Settings, vocab: Vocab
     ]
 
 
-async def test_other_rollup_names_count_and_sum(settings: Settings, vocab: Vocabulary) -> None:
-    """The one place T07 can silently drop data: the annotation has to name both."""
+async def test_encode_plots_every_bucket_it_is_given(settings: Settings, vocab: Vocabulary) -> None:
+    """Truncation belongs to the aggregation mode, which is the only layer that can disclose it.
+
+    This module used to roll a long tail into a synthesized "Other" category. Every mode already
+    caps at `max_buckets`, so the branch was unreachable, and reaching it would have put a bar on
+    the chart that `meta.coverage.bucket_sum` does not account for.
+    """
     ctx = await a_ctx(settings, vocab, max_buckets=20)
     buckets = [
         Bucket(key=f"S{i:02d}", label=f"Sponsor {i}", value=float(100 - i), exactness="exact")
@@ -108,20 +113,8 @@ async def test_other_rollup_names_count_and_sum(settings: Settings, vocab: Vocab
         ctx,
     )
 
-    assert len(viz.data) == 20
-    other = viz.data[-1]
-    assert other["lead_sponsor"] == "OTHER"
-    assert other["lead_sponsor_label"].startswith("Other (31 categories)")
-
-    # Top 19 by value are 100..82 (i=0..18); rolled are i=19..49 with values 81..51.
-    rolled_sum = sum(range(51, 82))
-    assert other["study_count"] == rolled_sum
-    assert viz.annotations is not None
-    note = next(a for a in viz.annotations if a["type"] == "rollup")
-    assert note["rolled_categories"] == 31
-    assert note["rolled_value"] == rolled_sum
-    assert "31" in note["text"]
-    assert f"{rolled_sum:,}" in note["text"]
+    assert len(viz.data) == 50
+    assert "OTHER" not in {row["lead_sponsor"] for row in viz.data}
 
 
 async def test_zero_results_are_empty_not_fabricated(settings: Settings, vocab: Vocabulary) -> None:
