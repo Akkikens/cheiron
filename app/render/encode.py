@@ -368,8 +368,24 @@ def _choropleth(
 def _title(plan: AnalysisPlan, dim: Dimension) -> str:
     subject = plan.filters.intervention or plan.filters.condition or plan.filters.sponsor
     if subject:
-        return f"{_title_case(subject)} Trials by {dim.label}"
-    return f"Clinical Trials by {dim.label}"
+        return f"{_title_case(subject)} Trials by {_dimension_noun(dim)}"
+    return f"Clinical Trials by {_dimension_noun(dim)}"
+
+
+def _dimension_noun(dim: Dimension) -> str:
+    """The dimension as it reads in a title, which is not how it reads on an axis.
+
+    `dim.label` is written for an axis, where "Trial phase" is right. In a title it produces
+    "Pembrolizumab Trials by Trial phase" — so the redundant qualifier is dropped and the result
+    is title-cased. Titles are derived from the plan by code, never model-authored (SPEC §4.1),
+    which is exactly why the wording has to be handled here rather than left to a prompt.
+    """
+    label = dim.label
+    # Only "Trial " is redundant — the subject is already "… Trials". "Study type" keeps its
+    # qualifier, because "Trials by Type" says less than "Trials by Study type".
+    if label.startswith("Trial ") and len(label) > len("Trial "):
+        label = label[len("Trial ") :]
+    return label[:1].upper() + label[1:]
 
 
 def _title_case(text: str) -> str:

@@ -68,7 +68,7 @@ async def test_bar_chart_rows_carry_key_label_and_count(
     )
 
     assert viz.type == ChartType.BAR_CHART
-    assert viz.title == "Pembrolizumab Trials by Trial phase"
+    assert viz.title == "Pembrolizumab Trials by Phase"
     assert viz.subtitle == "2,927 studies · ClinicalTrials.gov, data as of 2026-08-14"
     assert viz.encoding["x"]["field"] == "phase"
     assert viz.encoding["x"]["sort"][-1] == "MISSING"
@@ -165,3 +165,15 @@ async def test_overlapping_gets_a_coverage_annotation(
 
     assert viz.annotations is not None
     assert any("overlap" in a["text"].lower() for a in viz.annotations)
+
+
+def test_title_drops_the_axis_qualifier_but_the_axis_keeps_it() -> None:
+    """ "Trial phase" is right on an axis and wrong in a title; both readings are served."""
+    from app.engine.dimensions import REGISTRY
+    from app.render.encode import _dimension_noun
+
+    assert _dimension_noun(REGISTRY["phase"]) == "Phase"
+    assert REGISTRY["phase"].label == "Trial phase"
+    # "Study type" keeps its qualifier: "Trials by Type" would say less, not more.
+    assert _dimension_noun(REGISTRY["study_type"]) == "Study type"
+    assert _dimension_noun(REGISTRY["country"]) == "Country"

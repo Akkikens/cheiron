@@ -57,7 +57,7 @@ async def test_analyze_returns_a1_bar_chart(settings: Settings) -> None:
     meta = body["meta"]
 
     assert viz["type"] == "bar_chart"
-    assert viz["title"] == "Pembrolizumab Trials by Trial phase"
+    assert viz["title"] == "Pembrolizumab Trials by Phase"
     assert "2,927 studies" in viz["subtitle"]
     assert viz["encoding"]["x"]["field"] == "phase"
     assert viz["encoding"]["x"]["sort"][-1] == "MISSING"

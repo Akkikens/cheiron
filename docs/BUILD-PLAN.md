@@ -196,16 +196,16 @@ a changed `data_timestamp` raises `DataTimestampChanged` → the whole group-by 
 
 ---
 
-## 6. Open questions (resolve in T01, then delete this section)
+## 6. Open questions — all resolved
 
-> **Resolved in T01 — `COVER` vs `COVERAGE`.** Both spellings are exact grammar aliases and
-> both return 1,841; the codebase standardises on `COVERAGE`. `CTG-API-NOTES.md` §2 now
-> carries the live-verified table, including the finding that omitting the `AREA[]` prefix
-> returns 4,591 at HTTP 200.
+1. **`COVER` vs `COVERAGE`.** T01 measured them as exact aliases (both 1,841); standardized on
+   `COVERAGE`, pinned in `app/constants.py`. The real defect was next door: both documents wrote
+   the predicate without its `AREA[...]` prefix, which is valid Essie returning 4,591 at HTTP 200.
+2. **`sponsor` → `query.lead`.** Settled by SPEC §2.1, disclosed in `meta.assumptions`.
+3. **Enrollment metrics.** T10 made them servable in `complete_records`. Above the threshold the
+   engine refuses at run time with `unplannable_query` naming the threshold and the match count,
+   rather than silently degrading to `study_count`.
 
-1. **`sponsor` → `query.lead`** is settled (SPEC §2.1) and disclosed in
-   `meta.assumptions`. No further discussion.
-2. **Enrollment metrics** (`enrollment_sum`, `enrollment_median`) cannot be computed by
-   count fan-out — they need record mode. Until T10 lands, a plan with an enrollment metric
-   above the record-mode threshold must fail with `unplannable_query` and a suggestion,
-   not silently degrade to `study_count`.
+Carried into the README's "what I'd do with more time": the live Structured Outputs call remains
+unconfirmed (the available key returned 401 throughout), and an `enrollment_count` dimension is
+what would make `histogram` and `scatter_plot` reachable.
