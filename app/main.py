@@ -34,15 +34,17 @@ def create_app(
     if resolved_completer is None and resolved.llm_enabled:
         resolved_completer = openai_completer(resolved)
 
+    owned = transport or CTGTransport(resolved)
+    vocabulary_cache = VocabularyCache()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        owned = transport or CTGTransport(resolved)
-        app.state.transport = owned
-        app.state.vocabulary_cache = VocabularyCache()
-        app.state.plan_cache = TTLStore[AnalysisPlan]()
-        app.state.result_cache = TTLStore[AnalyzeResponse](ttl=RESULT_TTL_SECONDS)
-        # A cold /studies/enums must not stop the process from booting (T02); /health says so.
-        app.state.vocabulary_ready = await app.state.vocabulary_cache.warm(CTGClient(owned))
+        # Warming only. Everything the routes need is assigned below, at construction, because
+        # a serverless runtime may never run lifespan at all — and a service whose requests 500
+        # unless a startup hook fired is depending on its host for correctness. A cold
+        # /studies/enums must not stop the process from booting either (T02); /health says so,
+        # and `VocabularyCache.get` loads on first use regardless.
+        app.state.vocabulary_ready = await vocabulary_cache.warm(CTGClient(owned))
         try:
             yield
         finally:
@@ -57,6 +59,11 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = resolved
+    app.state.transport = owned
+    app.state.vocabulary_cache = vocabulary_cache
+    app.state.plan_cache = TTLStore[AnalysisPlan]()
+    app.state.result_cache = TTLStore[AnalyzeResponse](ttl=RESULT_TTL_SECONDS)
+    app.state.vocabulary_ready = False
 
     install_request_id_middleware(app)
     install_error_handlers(app)
@@ -66,7 +73,12 @@ def create_app(
         return {
             "status": "ok",
             "llm_enabled": resolved.llm_enabled,
-            "vocabulary": "ok" if app.state.vocabulary_ready else "unavailable",
+            # Either the startup warm succeeded or a request has since loaded it lazily. Reading
+            # only the warm flag reported "unavailable" forever on a host that skips lifespan,
+            # while /analyze worked fine.
+            "vocabulary": "ok"
+            if (app.state.vocabulary_ready or vocabulary_cache.loaded)
+            else "unavailable",
             # Caching is a stated property (SPEC §1, §7), so it is observable rather than assumed.
             "cache": {
                 "plan": app.state.plan_cache.stats(),

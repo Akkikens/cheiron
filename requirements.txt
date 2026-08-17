@@ -1,0 +1,9 @@
+# Vercel's Python runtime installs from this file. It mirrors the runtime dependencies in
+# pyproject.toml — uvicorn is absent because the platform provides the ASGI server, and the dev
+# extra is absent because nothing here runs the tests.
+fastapi>=0.115
+pydantic>=2.9
+pydantic-settings>=2.6
+httpx[http2]>=0.27
+cachetools>=5.5
+openai>=1.54
