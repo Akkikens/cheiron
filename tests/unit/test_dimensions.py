@@ -23,6 +23,7 @@ SPEC_TABLE = [
     ("lead_sponsor", False, True),
     ("intervention_name", False, False),
     ("condition", False, False),
+    ("enrollment_count", True, True),
 ]
 
 ENUMS = load_fixture("studies_enums.json")
@@ -54,7 +55,11 @@ def test_registry_has_exactly_the_spec_rows() -> None:
 @pytest.mark.parametrize(("key", "closed_vocab", "partition"), SPEC_TABLE)
 def test_row_matches_spec(key: str, closed_vocab: bool, partition: bool) -> None:
     dim = REGISTRY[key]
-    assert (dim.enum_name is not None or key == "start_year") is closed_vocab
+    # "Closed vocabulary" is broader than "has an enum": start_year is a derived date range and
+    # enrollment_count is a fixed set of bins. Both are closed, both carry enum_name=None, and
+    # conflating the two concepts is what once routed every large trend query into sampling.
+    derived = key in ("start_year", "enrollment_count")
+    assert (dim.enum_name is not None or derived) is closed_vocab
     assert dim.partition is partition
 
 

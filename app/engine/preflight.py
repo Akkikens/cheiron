@@ -20,7 +20,7 @@ from typing import Literal
 
 from app.engine.basefilter import base_filter
 from app.engine.context import RunContext
-from app.engine.dimensions import Dimension, is_temporal
+from app.engine.dimensions import QUANTITATIVE_KEYS, Dimension, is_temporal
 from app.errors import CheironError, ErrorCode
 from app.models.plan import AnalysisPlan
 
@@ -48,7 +48,7 @@ def select_mode(total: int, dim: Dimension, threshold: int) -> AggregationModeNa
     """
     if total <= threshold:
         return "complete_records"
-    if dim.enum_name is not None or is_temporal(dim):
+    if dim.enum_name is not None or is_temporal(dim) or dim.key in QUANTITATIVE_KEYS:
         return "server_counts"
     return "sampled_then_confirmed"
 

@@ -92,7 +92,17 @@ def _primary(
         )
 
     if plan.intent is Intent.SCATTER and QUANTITATIVE_KEYS:
-        return ChartType.SCATTER_PLOT
+        if bucketset.mode == "complete_records":
+            return ChartType.SCATTER_PLOT
+        # A scatter plots one point per study, so it needs the records themselves. Above the
+        # threshold there are none in memory, and plotting bin midpoints as if they were studies
+        # would invent data — the same reasoning that keeps network_graph in record mode.
+        warnings.append(
+            f"scatter_plot plots one point per study and needs complete_records mode; this "
+            f"result has {bucketset.total:,} studies under {bucketset.mode!r}, so returning a "
+            f"histogram of the same dimension instead."
+        )
+        return ChartType.HISTOGRAM
 
     if plan.intent is Intent.HISTOGRAM and QUANTITATIVE_KEYS:
         return ChartType.HISTOGRAM

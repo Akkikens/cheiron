@@ -138,12 +138,59 @@ REGISTRY: Final[Mapping[str, Dimension]] = {
             label="Condition",
             query_param="query.cond",
         ),
+        Dimension(
+            key="enrollment_count",
+            area="EnrollmentCount",
+            enum_name=None,
+            record_path="protocolSection.designModule.enrollmentInfo.count",
+            is_list=False,
+            partition=True,
+            label="Enrollment",
+            query_param=None,
+        ),
     )
 }
 
 TEMPORAL_KEYS: Final = frozenset({"start_year"})
 
-QUANTITATIVE_KEYS: Final[frozenset[str]] = frozenset()
+QUANTITATIVE_KEYS: Final[frozenset[str]] = frozenset({"enrollment_count"})
+"""Dimensions whose values are numeric and therefore binnable.
+
+Adding `enrollment_count` here is what makes SPEC §6.1's `histogram` and `scatter_plot` rows
+reachable: both need a quantitative dimension, and until this set was non-empty the planner
+refused those intents outright.
+"""
+
+ENROLLMENT_BINS: Final[tuple[tuple[int, int | None], ...]] = (
+    (0, 10),
+    (11, 50),
+    (51, 100),
+    (101, 500),
+    (501, 1_000),
+    (1_001, 5_000),
+    (5_001, None),
+)
+"""Fixed edges, chosen for how trials are actually sized rather than by equal width.
+
+Equal-width bins are useless here: enrollment spans 0 to 188,814,085 (notes §6.4), so linear
+bins would put essentially every study in the first one. The open top bin absorbs the
+`99999999` placeholders and the genuine outliers together, which is why record mode winsorizes
+before computing enrollment *metrics* — the histogram counts studies, so it does not need to.
+"""
+
+
+def bin_key(value: int) -> str:
+    """The bin a raw enrollment falls in, as its own label."""
+    for low, high in ENROLLMENT_BINS:
+        if high is None or value <= high:
+            return bin_label(low, high)
+    return bin_label(*ENROLLMENT_BINS[-1])
+
+
+def bin_label(low: int, high: int | None) -> str:
+    return f"{low:,}+" if high is None else f"{low:,}-{high:,}"
+
+
 """Dimensions whose buckets are numeric ranges rather than categories.
 
 Empty on purpose: SPEC §5.1's ten rows are closed enums, open vocabularies, and one derived

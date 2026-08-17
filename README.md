@@ -112,6 +112,8 @@ beyond `encoding` + `data`.
 | `grouped_bar_chart` | `x`, `y`, `series` |
 | `stacked_bar_chart` | `x`, `y`, `stack` |
 | `time_series` | `x` (temporal), `y`, `series?` |
+| `histogram` | `x` (quantitative, with `bin_start`/`bin_end`), `y` |
+| `scatter_plot` | `x`, `y`, `color?` |
 | `choropleth_map` | `location` (ISO-3166 alpha-3 + raw name), `value` |
 | `network_graph` | `nodes[{id,label,group,weight}]`, `edges[{source,target,weight}]` |
 | `table` | `columns[{field,label,type}]` |
@@ -159,8 +161,9 @@ beyond `encoding` + `data`.
 
 ## 4. Example runs
 
-Real output from live runs on 2026-08-16, trimmed for length. All five are reproducible with
-`LLM_ENABLED=false` except the network graph, whose plan was supplied directly (see §8).
+Real output from live runs on 2026-08-16, trimmed for length. The first four are reproducible
+with `LLM_ENABLED=false`; the network graph, histogram, and scatter need intents the
+deterministic planner does not emit, so their plans were supplied directly (see §8).
 
 ### 4.1 Distribution — and numbers that legitimately do not add up
 
@@ -320,6 +323,51 @@ from every matching study and is therefore exact and unbiased. Above the thresho
 downgrades to a grouped bar chart and says why. A network built from a relevance-ranked sample
 would look authoritative and would not be, so it is not offered at all.
 
+### 4.6 Histogram — enrollment distribution
+
+Plan: `intent=histogram`, `group_by=enrollment_count`, glioblastoma trials starting 2024–2025.
+
+```jsonc
+{ "type": "histogram", "title": "Glioblastoma Trials by Enrollment",
+  "encoding": {
+    "x": { "field": "enrollment_count", "type": "quantitative", "label": "Enrollment",
+           "bin_start": "bin_start", "bin_end": "bin_end",
+           "sort": ["0-10","11-50","51-100","101-500","501-1,000","1,001-5,000","5,001+"] },
+    "y": { "field": "study_count", "type": "quantitative", "label": "Number of trials" }
+  },
+  "data": [
+    { "enrollment_count": "0-10",      "study_count": 31,  "bin_start": 0,   "bin_end": 10 },
+    { "enrollment_count": "11-50",     "study_count": 107, "bin_start": 11,  "bin_end": 50 },
+    { "enrollment_count": "51-100",    "study_count": 38,  "bin_start": 51,  "bin_end": 100 },
+    { "enrollment_count": "101-500",   "study_count": 45,  "bin_start": 101, "bin_end": 500 },
+    { "enrollment_count": "501-1,000", "study_count": 7,   "bin_start": 501, "bin_end": 1000 }
+  ] }
+```
+
+### 4.7 Scatter — one point per study
+
+Plan: `intent=scatter`, same filter. Record mode only, so every point is a real study you can open.
+
+```jsonc
+{ "type": "scatter_plot", "title": "Glioblastoma Trials: enrollment by start year",
+  "encoding": {
+    "x": { "field": "start_year", "type": "temporal", "label": "Start year" },
+    "y": { "field": "enrollment", "type": "quantitative", "label": "Enrollment" },
+    "color": { "field": "nct_id", "type": "nominal", "label": "Study" }
+  },
+  "data": [
+    { "nct_id": "NCT02546102", "start_year": 2024, "enrollment": 234,
+      "url": "https://clinicaltrials.gov/study/NCT02546102" },
+    { "nct_id": "NCT04945148", "start_year": 2024, "enrollment": 640,
+      "url": "https://clinicaltrials.gov/study/NCT04945148" }
+  ],
+  "annotations": [
+    { "type": "points", "plotted": 229, "excluded": 0,
+      "text": "229 of 229 studies plotted; 0 lack a start date or an enrollment count and are
+               excluded rather than plotted at zero." }
+  ] }
+```
+
 ---
 
 ## 5. How it works
@@ -367,8 +415,9 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
 
 ## 6. Visualization coverage
 
-`bar_chart`, `grouped_bar_chart`, `stacked_bar_chart`, `time_series`, `choropleth_map`,
-`network_graph`, `table`, `kpi`. Chart choice is a deterministic function of
+All ten types in the contract: `bar_chart`, `grouped_bar_chart`, `stacked_bar_chart`,
+`time_series`, `histogram`, `scatter_plot`, `choropleth_map`, `network_graph`, `table`, `kpi`.
+Chart choice is a deterministic function of
 `(intent, cardinality, series count, partition?, mode)`; `viz_hint` from the model breaks ties
 only and is discarded when it violates a safety rule, with the discard reported.
 
@@ -376,10 +425,14 @@ Three safety rules are non-overridable: no pie or 100%-stacked chart on a multi-
 dimension, no share-of-total field under overlapping semantics, and no network graph outside
 `complete_records`.
 
-`scatter_plot` and `histogram` are specified in `SPEC.md` but **unreachable**: both need a
-quantitative dimension and the registry defines none. Plans requesting them are rejected with
-a message naming the real blocker rather than falling through to a chart that answers a
-different question. See §9.
+`histogram` and `scatter_plot` are reachable through the `enrollment_count` dimension. The
+histogram bins enrollment with fixed, trial-shaped edges (0-10 … 5,001+) rather than equal
+widths — enrollment spans 0 to 188,814,085, so linear bins would put nearly every study in the
+first one — and bars are ordered by their lower edge, never by height. The scatter plots one
+point per study, enrollment against start date, and therefore needs `complete_records` mode
+exactly as `network_graph` does; above the threshold it downgrades to the histogram of the same
+dimension and says so. Studies missing either axis are excluded and counted in an annotation
+rather than plotted at zero, which would manufacture a cluster that does not exist.
 
 ---
 
@@ -460,9 +513,8 @@ particular changed real behaviour rather than style.
   the LLM planner's repair loop, fallback, and caching are all exercised through an injected
   completer. The published schema is asserted against the documented strict constraint set, so
   the first live call should be a confirmation rather than a discovery — but it has not been made.
-- **No `enrollment_count` dimension**, which is the single change that would make `histogram` and
-  `scatter_plot` reachable. Enrollment needs record-mode paging and winsorizing to be plottable at
-  all: missing on 7,133 studies, `99999999` placeholders, and a maximum of 188,814,085.
+- **Enrollment bin edges are fixed, not adaptive.** They suit oncology-scale trials; a corpus-wide
+  question would be better served by quantile bins computed from the result set.
 - **Caches are in-process.** Correct for a stateless service, but a shared store would make the
   plan cache useful across replicas.
 - **Cross-tabs above the record-mode threshold need both dimensions closed**, and refuse

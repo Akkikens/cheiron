@@ -303,6 +303,7 @@ row here, not a new code path.
 | `lead_sponsor` | `LeadSponsorName` | open | yes |
 | `intervention_name` | `InterventionName` | open | **no** |
 | `condition` | `Condition` | open | **no** |
+| `enrollment_count` | `EnrollmentCount` | closed (binned range) | yes |
 
 `partition: false` ⇒ `groupby_semantics: "overlapping"`, and the chart registry (§6)
 **refuses pie / 100%-stacked / share-of-total** for that dimension.
@@ -394,14 +395,17 @@ Deterministic function of `(intent, dimension cardinality, series count, partiti
 dimension. No `share_of_total` field emitted when `groupby_semantics=overlapping`. No
 `network_graph` outside `complete_records`.
 
-> **`scatter_plot` and `histogram` are specified but unreachable in v1.** Both require a
-> quantitative `group_by` dimension and §5.1's registry defines none — every dimension there
-> is nominal, ordinal, or temporal. `intent=scatter` and `intent=histogram` are therefore
-> rejected at plan validation with `unplannable_query` naming the reason, rather than
-> falling through to `table` and silently answering a different question. The rows stay in
-> this table because they become live the moment an `enrollment_count` dimension is added;
-> enrollment is the only quantitative field and is computable solely in `complete_records`
-> mode (§5.2), with the winsorizing §5.2 requires.
+> **`scatter_plot` and `histogram` became reachable when `enrollment_count` was added to §5.1.**
+> Both require a quantitative `group_by` dimension. The refusal was always keyed on the registry
+> rather than hardcoded, so adding one row lifted it; with the set empty again, the plan is
+> refused with `unplannable_query` naming the blocker rather than falling through to `table` and
+> silently answering a different question.
+>
+> A `histogram` bins enrollment with fixed, trial-shaped edges (0-10 … 5,001+) rather than equal
+> widths, because enrollment spans 0 to 188,814,085 and linear bins would put nearly every study
+> in the first one. A `scatter_plot` plots one point per study and therefore needs
+> `complete_records` mode, exactly as `network_graph` does; above the threshold it downgrades to
+> the histogram of the same dimension and says so.
 
 ### 6.2 Encoding per type
 

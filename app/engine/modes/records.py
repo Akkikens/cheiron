@@ -25,7 +25,7 @@ from app.engine.citations import (
     value_at,
 )
 from app.engine.context import RunContext
-from app.engine.dimensions import REGISTRY, Dimension, is_temporal
+from app.engine.dimensions import QUANTITATIVE_KEYS, REGISTRY, Dimension, bin_key, is_temporal
 from app.models.plan import AnalysisPlan, Metric
 from app.models.response import AggregationMode, Citation
 
@@ -206,6 +206,14 @@ def membership_keys(study: Mapping[str, Any], dim: Dimension) -> list[str] | Non
     if is_temporal(dim):
         year = _year_of(raw if isinstance(raw, str) else None)
         return [str(year)] if year is not None else None
+
+    if dim.key in QUANTITATIVE_KEYS:
+        # A non-numeric or absent value is unclassified, never bin zero — notes §6.4 found
+        # enrollment missing on 7,133 studies, and folding those into "0-10" would invent a
+        # spike of tiny trials that do not exist.
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            return None
+        return [bin_key(int(raw))]
 
     if isinstance(raw, list):
         if not raw:

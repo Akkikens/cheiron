@@ -147,11 +147,21 @@ def _check_coherence(plan: AnalysisPlan) -> list[str]:
             f"needs at least 2. Add a second series, or use intent 'distribution'."
         )
 
-    if plan.intent is Intent.SCATTER and plan.secondary_group_by is None:
-        errors.append(
-            "intent is 'scatter' but secondary_group_by is null; a scatter plot needs two "
-            "dimensions. Set secondary_group_by, or change the intent."
-        )
+    # Only when a quantitative dimension exists: with none, `_check_intent_is_reachable` refuses
+    # the intent outright and this would add a second message saying the same thing less well.
+    for quantitative_intent in (Intent.SCATTER, Intent.HISTOGRAM) if QUANTITATIVE_KEYS else ():
+        if plan.intent is quantitative_intent and plan.group_by.dimension not in QUANTITATIVE_KEYS:
+            errors.append(
+                f"intent is {quantitative_intent.value!r} but group_by.dimension is "
+                f"{plan.group_by.dimension!r}, which is not quantitative. Use "
+                f"{' or '.join(sorted(QUANTITATIVE_KEYS)) or 'a quantitative dimension'}, or "
+                f"change the intent to 'distribution'."
+            )
+
+    # `scatter` deliberately does NOT require secondary_group_by. It plots one point per study
+    # with enrollment against start date, so the second axis is a property of the chart rather
+    # than a choice the plan makes — demanding a field the renderer ignores would invite a
+    # caller to set it and expect it to matter.
 
     errors.extend(_check_intent_is_reachable(plan))
     return errors

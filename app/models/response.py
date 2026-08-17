@@ -47,6 +47,12 @@ class Channel(BaseModel):
     sort: list[str] | None = None
     format: str | None = None
     scale: str | None = None
+    bin_start: str | None = None
+    bin_end: str | None = None
+    """SPEC §6.2: a histogram's x channel names the row keys holding each bar's range.
+
+    A histogram bar spans an interval, so a renderer needs both edges — `field` alone gives it a
+    label to print, not a width to draw."""
 
 
 class Visualization(BaseModel):

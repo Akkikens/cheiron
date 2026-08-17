@@ -170,9 +170,14 @@ def test_stacked_hint_on_overlapping_dimension_is_discarded() -> None:
     assert any("stacked_bar_chart" in warning for warning in warnings)
 
 
-def test_histogram_and_scatter_are_never_returned_from_reachable_inputs() -> None:
-    """SPEC §6.1: unreachable by construction. Fails the day QUANTITATIVE_KEYS is non-empty."""
-    assert not QUANTITATIVE_KEYS, "add real coverage for scatter/histogram when this fires"
+def test_histogram_and_scatter_are_not_returned_for_non_quantitative_intents() -> None:
+    """The sweep that used to assert both types were unreachable.
+
+    `enrollment_count` now exists, so they are reachable — but only from their own intents. No
+    combination of the other six may produce either type, which is what keeps a distribution
+    question from silently answering with a histogram.
+    """
+    assert QUANTITATIVE_KEYS  # the dimension is present; the sweep below excludes its intents
 
     intents = [
         Intent.DISTRIBUTION,

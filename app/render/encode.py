@@ -7,14 +7,15 @@ and the summed value; a bare omission would be `truncated: true` wearing a diffe
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Any
 
 from app.ctg.vocab import Vocabulary
 from app.engine.bucketset import Bucket, BucketSet
+from app.engine.citations import nct_id_of, value_at
 from app.engine.context import RunContext
-from app.engine.dimensions import Dimension
+from app.engine.dimensions import ENROLLMENT_BINS, Dimension, bin_label
 from app.engine.multi import CrossCell, Panel
 from app.models.plan import AnalysisPlan, ChartType, Metric
 from app.models.response import Visualization
@@ -109,6 +110,12 @@ def render(
 
     buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
     rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in buckets]
+    if chart_type is ChartType.HISTOGRAM:
+        # A histogram bar spans a range, so the renderer needs its edges, not just its label.
+        for row in rows:
+            low, high = _bin_edges(str(row[dim.key]))
+            row["bin_start"] = low
+            row["bin_end"] = high
     if chart_type in (ChartType.GROUPED_BAR_CHART, ChartType.STACKED_BAR_CHART):
         # Reached only when there is genuinely one series and no secondary dimension — the
         # network A7 downgrade is the main case. Real comparisons and cross-tabs never arrive
@@ -118,7 +125,7 @@ def render(
         channel = "series" if chart_type is ChartType.GROUPED_BAR_CHART else "stack"
         for row in rows:
             row.setdefault(channel, "all")
-    rows = _sort_rows(rows, dim, ctx.vocab, chart_type)
+    rows = _sort_rows(rows, dim, ctx.vocab, chart_type, plan.metric)
     rows = _other_last(rows, dim.key)
 
     encoding = _encoding(chart_type, dim, plan.metric, ctx.vocab, rows)
@@ -165,7 +172,7 @@ def render_panels(
             row["series"] = panel.label
             rows.append(row)
 
-    rows = _sort_rows(rows, dim, ctx.vocab, ChartType.GROUPED_BAR_CHART)
+    rows = _sort_rows(rows, dim, ctx.vocab, ChartType.GROUPED_BAR_CHART, plan.metric)
 
     annotations: list[dict[str, Any]] = [
         {
@@ -223,7 +230,7 @@ def render_crosstab(
             }
         )
 
-    rows = _sort_rows(rows, dim, ctx.vocab, chart_type)
+    rows = _sort_rows(rows, dim, ctx.vocab, chart_type, plan.metric)
 
     encoding = _encoding(chart_type, dim, plan.metric, ctx.vocab, rows)
     encoding[channel] = {
@@ -264,6 +271,107 @@ def render_crosstab(
         ),
         warnings,
     )
+
+
+def _bin_edges(key: str) -> tuple[int, int | None]:
+    for low, high in ENROLLMENT_BINS:
+        if bin_label(low, high) == key:
+            return low, high
+    return 0, None
+
+
+def render_scatter(
+    plan: AnalysisPlan,
+    studies: Sequence[Mapping[str, Any]],
+    bucketset: BucketSet,
+    dim: Dimension,
+    ctx: RunContext,
+) -> tuple[Visualization, list[str]]:
+    """One point per study: start year against enrollment. `complete_records` only.
+
+    Every point is a real study with its NCT id attached, so a reader can open any outlier and
+    check it. Studies missing either axis are excluded and counted in the annotation rather than
+    plotted at zero, which would manufacture a cluster on both axes that does not exist.
+    """
+    warnings: list[str] = []
+    points: list[dict[str, Any]] = []
+    skipped = 0
+
+    for record in studies:
+        year = _study_year(record)
+        enrollment = _study_enrollment(record)
+        nct = _study_nct(record)
+        if year is None or enrollment is None or nct is None:
+            skipped += 1
+            continue
+        points.append(
+            {
+                "nct_id": nct,
+                "start_year": year,
+                "enrollment": enrollment,
+                "url": f"https://clinicaltrials.gov/study/{nct}",
+            }
+        )
+
+    points.sort(key=lambda point: (point["start_year"], point["nct_id"]))
+
+    annotations: list[dict[str, Any]] = [
+        {
+            "type": "points",
+            "text": (
+                f"{len(points):,} of {len(studies):,} studies plotted; {skipped:,} lack a start "
+                f"date or an enrollment count and are excluded rather than plotted at zero."
+            ),
+            "plotted": len(points),
+            "excluded": skipped,
+        }
+    ]
+
+    return (
+        Visualization(
+            type=ChartType.SCATTER_PLOT,
+            # Not `_title(plan, dim)`: that appends "by Enrollment", giving "… by Enrollment:
+            # enrollment by start year". A scatter names both axes itself.
+            title=f"{_subject_title(plan)}: enrollment by start year",
+            subtitle=_subtitle(bucketset, ctx),
+            encoding={
+                "x": {"field": "start_year", "type": "temporal", "label": "Start year"},
+                "y": {"field": "enrollment", "type": "quantitative", "label": "Enrollment"},
+                "color": {"field": "nct_id", "type": "nominal", "label": "Study"},
+            },
+            data=points,
+            annotations=annotations,
+        ),
+        warnings,
+    )
+
+
+def _study_year(record: Mapping[str, Any]) -> int | None:
+    try:
+        raw = value_at(record, "protocolSection.statusModule.startDateStruct.date")
+    except KeyError:
+        return None
+    if not isinstance(raw, str) or len(raw) < 4 or not raw[:4].isdigit():
+        return None
+    year = int(raw[:4])
+    return year if 1900 <= year <= 2100 else None
+
+
+def _study_enrollment(record: Mapping[str, Any]) -> int | None:
+    try:
+        raw = value_at(record, "protocolSection.designModule.enrollmentInfo.count")
+    except KeyError:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return int(raw)
+
+
+def _study_nct(record: Mapping[str, Any]) -> str | None:
+    try:
+        return nct_id_of(record)
+    except KeyError:
+        return None
 
 
 def _label_for(dim: Dimension, key: str, vocab: Vocabulary) -> str:
@@ -316,17 +424,23 @@ def _row(bucket: Bucket, dim: Dimension, metric: Metric, vocab: Vocabulary) -> d
 
 
 def _sort_rows(
-    rows: list[dict[str, Any]], dim: Dimension, vocab: Vocabulary, chart_type: ChartType
+    rows: list[dict[str, Any]],
+    dim: Dimension,
+    vocab: Vocabulary,
+    chart_type: ChartType,
+    metric: Metric = Metric.STUDY_COUNT,
 ) -> list[dict[str, Any]]:
     key = dim.key
-    metric_field = next(
-        (
-            field
-            for field in rows[0]
-            if field.endswith("_count") or field.endswith("_sum") or field.endswith("_median")
-        ),
-        "study_count",
-    )
+    # The metric is known from the plan, so it is passed in rather than sniffed out of the row
+    # keys. Sniffing for a field ending in "_count" picked the *dimension* on an
+    # `enrollment_count` group-by and tried to sort bin labels as floats.
+    metric_field = metric.value
+
+    if chart_type is ChartType.HISTOGRAM:
+        # Bins are ordered by their lower edge, never by height: a histogram whose bars are
+        # sorted by count is a bar chart wearing a histogram's axis.
+        order = {bin_label(low, high): index for index, (low, high) in enumerate(ENROLLMENT_BINS)}
+        return sorted(rows, key=lambda row: order.get(str(row[key]), len(order)))
 
     if chart_type is ChartType.TIME_SERIES:
         return sorted(rows, key=lambda row: str(row[key]))
@@ -401,6 +515,17 @@ def _encoding(
         }
     if chart_type is ChartType.TIME_SERIES:
         return {"x": x_channel, "y": y_channel}
+    if chart_type is ChartType.HISTOGRAM:
+        return {
+            "x": {
+                **x_channel,
+                "type": "quantitative",
+                "bin_start": "bin_start",
+                "bin_end": "bin_end",
+                "sort": [bin_label(low, high) for low, high in ENROLLMENT_BINS],
+            },
+            "y": y_channel,
+        }
     if chart_type is ChartType.KPI:
         return {
             "value": {
@@ -503,10 +628,12 @@ def _choropleth(
 
 
 def _title(plan: AnalysisPlan, dim: Dimension) -> str:
+    return f"{_subject_title(plan)} by {_dimension_noun(dim)}"
+
+
+def _subject_title(plan: AnalysisPlan) -> str:
     subject = plan.filters.intervention or plan.filters.condition or plan.filters.sponsor
-    if subject:
-        return f"{_title_case(subject)} Trials by {_dimension_noun(dim)}"
-    return f"Clinical Trials by {_dimension_noun(dim)}"
+    return f"{_title_case(subject)} Trials" if subject else "Clinical Trials"
 
 
 def _dimension_noun(dim: Dimension) -> str:

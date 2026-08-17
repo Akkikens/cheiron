@@ -56,7 +56,7 @@ from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
 from app.planner.llm import ChatCompleter, LLMPlanner
 from app.planner.validate import enforce_hard_constraints, validate_plan
-from app.render.encode import render, render_crosstab, render_panels
+from app.render.encode import render, render_crosstab, render_panels, render_scatter
 from app.render.registry import select_chart
 
 
@@ -183,6 +183,8 @@ async def analyze(
         and studies is not None
     ):
         visualization, render_warnings = network.build(studies, plan, ctx)
+    elif chart_type is ChartType.SCATTER_PLOT and studies is not None:
+        visualization, render_warnings = render_scatter(plan, studies, bucketset, dim, ctx)
     elif panels is not None:
         visualization, render_warnings = render_panels(plan, panels, bucketset, dim, ctx)
     elif cells is not None and plan.secondary_group_by is not None:

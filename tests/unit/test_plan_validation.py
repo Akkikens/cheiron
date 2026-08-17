@@ -220,76 +220,79 @@ def test_multiple_series_without_comparison_is_refused_at_parse_time() -> None:
     assert "requires intent=comparison" in str(caught.value)
 
 
-def test_scatter_intent_requires_a_second_dimension(vocab: Vocabulary) -> None:
-    messages = validate_plan(a_plan(intent=Intent.SCATTER), vocab)
+def test_scatter_does_not_require_a_secondary_dimension(vocab: Vocabulary) -> None:
+    """Scatter plots enrollment against start date, so the second axis is not a plan choice.
 
-    assert any("secondary_group_by is null" in message for message in messages)
+    It used to demand `secondary_group_by`. Requiring a field the renderer ignores invites a
+    caller to set it and expect it to change the chart.
+    """
+    plan = a_plan(intent=Intent.SCATTER, group_by=GroupBy(dimension="enrollment_count"))
+
+    assert validate_plan(plan, vocab) == []
 
 
 @pytest.mark.parametrize("intent", [Intent.SCATTER, Intent.HISTOGRAM])
-def test_intents_needing_a_quantitative_dimension_are_refused(
+def test_these_intents_are_now_plannable(intent: Intent, vocab: Vocabulary) -> None:
+    """`enrollment_count` exists, so SPEC §6.1's scatter_plot and histogram rows are reachable.
+
+    This test previously asserted the opposite. The rule was always keyed on the registry rather
+    than hardcoded, so adding one dimension row lifted the refusal — which is what the
+    monkeypatch test below was written to guarantee, and now demonstrates for real.
+    """
+    plan = a_plan(intent=intent, group_by=GroupBy(dimension="enrollment_count"))
+
+    assert validate_plan(plan, vocab) == []
+
+
+@pytest.mark.parametrize("intent", [Intent.SCATTER, Intent.HISTOGRAM])
+def test_these_intents_need_the_quantitative_dimension_on_group_by(
     intent: Intent, vocab: Vocabulary
 ) -> None:
-    """SPEC §6.1 keys scatter_plot and histogram on a quantitative dimension; §5.1 defines none.
-
-    T07 asserts the chart registry can never return either type, which holds only because these
-    intents never reach it.
-    """
-    plan = a_plan(intent=intent, secondary_group_by=GroupBy(dimension="study_type"))
+    """Reachable is not the same as unconditional: the dimension has to actually be the axis."""
+    plan = a_plan(intent=intent, group_by=GroupBy(dimension="phase"))
 
     message = only_error(plan, vocab)
-    assert f"intent {intent.value!r}" in message
-    assert "quantitative group_by dimension" in message
-    assert "'distribution' or 'trend'" in message
+    assert "not quantitative" in message
+    assert "enrollment_count" in message
 
 
 @pytest.mark.parametrize("intent", [Intent.SCATTER, Intent.HISTOGRAM])
-def test_the_refusal_names_the_real_blocker(intent: Intent, vocab: Vocabulary) -> None:
-    """ "No quantitative dimension" is the symptom; enrollment being record-mode-only is why.
+def test_these_intents_parse_and_validate(intent: Intent, vocab: Vocabulary) -> None:
+    """`json_schema_strict()` publishes every intent as the model's action space.
 
-    A caller told only the former would reasonably ask for the dimension to be added.
-    """
-    plan = a_plan(intent=intent, secondary_group_by=GroupBy(dimension="study_type"))
-
-    message = only_error(plan, vocab)
-    assert "Enrollment is the only quantitative field" in message
-    assert "complete_records" in message
-
-
-@pytest.mark.parametrize("intent", [Intent.SCATTER, Intent.HISTOGRAM])
-def test_these_intents_parse_fine_and_fail_validation(intent: Intent, vocab: Vocabulary) -> None:
-    """The refusal has to live in validation, not in the schema.
-
-    `json_schema_strict()` publishes every intent as the model's action space, so a plan
-    carrying one of these must be *parseable* — otherwise T09's repair loop sees a malformed
-    response rather than an unservable request, and repairs the wrong thing.
+    A plan carrying one must be *parseable* whatever the verdict — otherwise T09's repair loop
+    sees a malformed response rather than an unservable request, and repairs the wrong thing.
     """
     plan = AnalysisPlan.model_validate(
         {
             "intent": intent.value,
             "filters": {},
-            "group_by": {"dimension": "phase"},
-            "interpretation": "Distribution of clinical trials across trial phases.",
+            "group_by": {"dimension": "enrollment_count"},
+            "interpretation": "Distribution of clinical trials across enrollment sizes.",
         }
     )
 
     assert plan.intent is intent
     assert intent.value in AnalysisPlan.json_schema_strict()["$defs"]["Intent"]["enum"]
-    assert validate_plan(plan, vocab)
+    assert validate_plan(plan, vocab) == []
 
 
-def test_the_refusal_lifts_when_a_quantitative_dimension_exists(
+def test_the_refusal_returns_if_the_quantitative_dimension_goes_away(
     vocab: Vocabulary, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The rule reads the registry rather than hardcoding the refusal.
+    """The rule reads the registry rather than hardcoding either verdict.
 
-    Adding `enrollment_count` to SPEC §5.1 should make scatter plannable by editing one set, not
-    by hunting for an `if intent is SCATTER` buried in the validator.
+    Kept inverted from its original direction so the refusal path stays covered now that the
+    real registry lifts it — and so the message keeps naming the real blocker rather than the
+    symptom.
     """
-    monkeypatch.setattr(validate_module, "QUANTITATIVE_KEYS", frozenset({"enrollment_count"}))
-    plan = a_plan(intent=Intent.SCATTER, secondary_group_by=GroupBy(dimension="study_type"))
+    monkeypatch.setattr(validate_module, "QUANTITATIVE_KEYS", frozenset())
+    plan = a_plan(intent=Intent.SCATTER, group_by=GroupBy(dimension="enrollment_count"))
 
-    assert validate_plan(plan, vocab) == []
+    message = only_error(plan, vocab)
+    assert "quantitative group_by dimension" in message
+    assert "Enrollment is the only quantitative field" in message
+    assert "complete_records" in message
 
 
 # --- rule 4: years -------------------------------------------------------------------------

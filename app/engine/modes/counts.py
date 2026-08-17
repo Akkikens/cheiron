@@ -31,7 +31,13 @@ from app.engine.citations import (
     sample_citations,
 )
 from app.engine.context import RunContext
-from app.engine.dimensions import Dimension, is_temporal
+from app.engine.dimensions import (
+    ENROLLMENT_BINS,
+    QUANTITATIVE_KEYS,
+    Dimension,
+    bin_label,
+    is_temporal,
+)
 from app.models.plan import AnalysisPlan
 from app.models.response import AggregationMode, Citation
 
@@ -193,6 +199,11 @@ def _bucket_keys(plan: AnalysisPlan, dim: Dimension, ctx: RunContext) -> list[st
     if is_temporal(dim):
         return [str(year) for year in _years(plan)]
 
+    if dim.key in QUANTITATIVE_KEYS:
+        # Bin edges are the vocabulary here: fixed, ordered, and closed, so a quantitative
+        # dimension fans out exactly like an enum rather than needing the sampling path.
+        return [bin_label(low, high) for low, high in ENROLLMENT_BINS]
+
     if dim.enum_name is None:
         raise ValueError(
             f"{dim.key!r} has an open vocabulary; server_counts needs a closed one "
@@ -223,12 +234,23 @@ def _years(plan: AnalysisPlan) -> list[int]:
 
 
 def _predicate(dim: Dimension, key: str, plan: AnalysisPlan) -> str:
+    if dim.key in QUANTITATIVE_KEYS:
+        low, high = _edges_for(key)
+        return Essie.numeric_range(dim.area, low, "MAX" if high is None else high)
+
     if not is_temporal(dim):
         return Essie.field_eq(dim.area, key)
 
     step = plan.group_by.bin.size if plan.group_by.bin else 1
     start = int(key)
     return Essie.date_range(dim.area, date(start, 1, 1), date(start + step - 1, 12, 31))
+
+
+def _edges_for(key: str) -> tuple[int, int | None]:
+    for low, high in ENROLLMENT_BINS:
+        if bin_label(low, high) == key:
+            return low, high
+    raise ValueError(f"no enrollment bin named {key!r}")
 
 
 def _label(dim: Dimension, key: str, ctx: RunContext) -> str:

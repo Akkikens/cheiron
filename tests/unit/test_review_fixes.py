@@ -318,3 +318,59 @@ async def test_edge_citations_quote_the_record_not_the_id(
     assert "Temozolomide" in citation["excerpt"]
     assert "interventions" in citation["field"]
     assert "briefSummary" not in citation["field"]
+
+
+# --- enrollment_count: the dimension that makes histogram and scatter reachable --------------
+
+
+def test_enrollment_bins_are_trial_shaped_not_equal_width() -> None:
+    """Enrollment spans 0 to 188,814,085; linear bins would put nearly every study in the first."""
+    from app.engine.dimensions import ENROLLMENT_BINS, bin_key
+
+    assert bin_key(0) == "0-10"
+    assert bin_key(45) == "11-50"
+    assert bin_key(640) == "501-1,000"
+    assert bin_key(188_814_085) == "5,001+"  # the outlier lands in the open top bin
+    assert ENROLLMENT_BINS[-1][1] is None
+
+
+def test_a_missing_enrollment_is_unclassified_not_bin_zero() -> None:
+    """notes §6.4: enrollment is missing on 7,133 studies.
+
+    Folding those into the 0-10 bin invents a spike of tiny trials that does not exist.
+    """
+    from app.engine.modes.records import membership_keys
+
+    dim = REGISTRY["enrollment_count"]
+    present = {"protocolSection": {"designModule": {"enrollmentInfo": {"count": 40}}}}
+    absent = {"protocolSection": {"designModule": {}}}
+
+    assert membership_keys(present, dim) == ["11-50"]
+    assert membership_keys(absent, dim) is None
+
+
+async def test_a_histogram_is_ordered_by_bin_not_by_height(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """A histogram sorted by count is a bar chart wearing a histogram's axis."""
+    ctx = await a_ctx(settings, vocab)
+    buckets = [
+        Bucket(key="501-1,000", label="501-1,000", value=7, exactness="exact"),
+        Bucket(key="11-50", label="11-50", value=107, exactness="exact"),
+        Bucket(key="0-10", label="0-10", value=31, exactness="exact"),
+    ]
+    bucketset = BucketSet(
+        buckets=buckets, total=145, unclassified=0, semantics="partition", mode="server_counts"
+    )
+    plan = AnalysisPlan(
+        intent=Intent.HISTOGRAM,
+        filters=StudyFilter(condition="glioblastoma"),
+        group_by=GroupBy(dimension="enrollment_count"),
+        interpretation="Distribution of trials by enrollment size.",
+    )
+
+    viz, _ = render(plan, bucketset, ChartType.HISTOGRAM, REGISTRY["enrollment_count"], ctx)
+
+    assert [row["enrollment_count"] for row in viz.data] == ["0-10", "11-50", "501-1,000"]
+    assert viz.data[0]["bin_start"] == 0 and viz.data[0]["bin_end"] == 10
+    assert viz.encoding["x"]["bin_start"] == "bin_start"
