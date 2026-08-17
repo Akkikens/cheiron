@@ -29,6 +29,10 @@ def build_coverage(
     """
     warnings: list[str] = []
     memberships = bucketset.bucket_sum
+    # The overlap note describes the result; `bucket_sum` describes the chart. Narrowing the
+    # bucket set to the plotted categories moved one and not the other, so the two must be
+    # separated explicitly or the reported overlap goes negative.
+    all_memberships = memberships + int(bucketset.omitted_value)
     with_value = bucketset.total - bucketset.unclassified
 
     if not counts_studies:
@@ -62,7 +66,9 @@ def build_coverage(
                 f"the difference as unexplained rather than as rounding."
             )
     else:
-        overlap_note = _overlap_note(dim, bucketset, memberships=memberships, with_value=with_value)
+        overlap_note = _overlap_note(
+            dim, bucketset, memberships=all_memberships, with_value=with_value
+        )
         if not bucketset.complete:
             # A multi-valued dimension takes this branch, so without this a truncated chart on
             # phase or condition disclosed the cut nowhere in `meta.coverage` at all.
@@ -123,6 +129,19 @@ def _overlap_note(
     overlap = memberships - with_value
     # The upstream field name, so a reader can go and check: `phases` for the phase dimension.
     field = dim.record_path.rsplit(".", 1)[-1]
+
+    if not bucketset.complete or overlap < 0:
+        # With an incomplete bucket list the memberships counted fall short of the studies that
+        # have a value, so their difference is not an overlap — it is the part that was never
+        # counted. Printing it as one produced "overlap -606"; asserting the zero branch instead
+        # would have manufactured "no study carries more than one phase", a claim about the data
+        # invented by truncation.
+        return (
+            f"{field} is multi-valued, so buckets overlap and do not sum to the total. The "
+            f"overlap cannot be quantified here because the bucket list is incomplete: "
+            f"{memberships:,} memberships were counted across the buckets present, against "
+            f"{with_value:,} studies carrying a value."
+        )
 
     if overlap == 0:
         return (

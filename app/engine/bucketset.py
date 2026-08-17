@@ -29,6 +29,14 @@ class BucketSet:
     mode: AggregationMode
     """Narrower than BUILD-PLAN §4's `str`: the three modes are a closed set, and reusing the
     response Literal means an unknown mode fails here rather than at serialization."""
+    omitted_value: float = 0.0
+    """Value held by the categories the chart does not plot.
+
+    The overlap arithmetic describes the *result*, not the chart, so it needs the full
+    membership count even after narrowing. Without this, `bucket_sum` fell to the plotted
+    categories while `with_value` still covered every study and the reported overlap went
+    negative — nonsense in the one block whose purpose is auditable arithmetic.
+    """
     omitted_buckets: int = 0
     """Categories the chart does not plot, so coverage can name a real number.
 
@@ -55,6 +63,8 @@ class BucketSet:
             self,
             buckets=keep,
             omitted_buckets=len(self.buckets) - len(keep),
+            omitted_value=self.omitted_value
+            + sum(bucket.value for bucket in self.buckets if bucket.key not in kept),
             complete=self.complete and len(keep) == len(self.buckets),
         )
 

@@ -529,12 +529,14 @@ for that step — including the two commits that say a shipped chart was a fabri
   that cannot fail is worse than no test.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **Four adversarial review passes found 32 defects** the spec-derived tests could not see —
-  nine, twelve, six, then five. Two of that last five were in the previous round's *fixes*: a
-  truncation fix that suppressed a warning and replaced it with prose that was itself false, and
-  a keyword restored with exactly the shadowing bug its removal had fixed. The rate is falling
-  but has not reached zero, which is the honest state to report. Each is pinned by a regression
-  test in
+- **Five adversarial review passes found 36 defects** the spec-derived tests could not see —
+  nine, twelve, six, five, then four. The tail is the interesting part: later passes kept finding
+  defects *introduced by the previous pass's fixes*. One truncation fix suppressed a warning and
+  replaced it with false prose; the next attempt at it made the reported overlap go negative. One
+  keyword was corrected three times before the right answer turned out to be deleting the whole
+  family — the third phrasing could not have worked, since "per &lt;dimension&gt;" is a continuation
+  by construction. The rate is falling and has not reached zero, which is the honest state to
+  report. Each is pinned by a regression test in
   `tests/unit/test_review_fixes.py` and `tests/unit/test_multi.py`, and named in the commit that
   fixed it rather than quietly corrected, because the pattern in them is more useful than the
   fixes. Two shipped fabricated numbers: a comparison chart labelled with one series' name over

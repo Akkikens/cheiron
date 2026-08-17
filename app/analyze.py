@@ -192,9 +192,19 @@ async def analyze(
     # bucket_sum totals bars nobody can see and the note counts categories nobody was shown.
     if panels is not None:
         bucketset = bucketset.plotted_only(plotted_axis_keys(panels, request.options.max_buckets))
-    elif cells is not None:
+    elif cells:
+        # `elif cells:` and not `is not None`: an empty cross-tab means no study had *both*
+        # dimensions, which is a data fact, not a cap. Narrowing to an empty key set emptied the
+        # bucket set and reported "Showing 0 of 5 values, the rest cut by options.max_buckets" —
+        # naming the wrong cause for a chart that has nothing to draw.
         bucketset = bucketset.plotted_only(
             plotted_crosstab_keys(cells, request.options.max_buckets)
+        )
+    elif cells is not None:
+        ctx.warnings.append(
+            f"No study matched both {dim.key} and "
+            f"{plan.secondary_group_by.dimension if plan.secondary_group_by else 'the secondary'}"
+            f", so the cross-tab is empty; the breakdown is absent from the data, not truncated."
         )
 
     coverage, coverage_warnings = build_coverage(

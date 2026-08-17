@@ -22,10 +22,17 @@ keyword matcher cannot resolve, so "how many participants" is deliberately *not*
 routes to `phase`, which is at least one of the two things asked. Disambiguating a question that
 names two dimensions is what the LLM planner is for.
 
-The same trap then caught the replacement: "how many patients" claimed "How many patients are
-enrolled in each phase?" for exactly the reason "how many participants" had. Only phrasings that
-cannot continue into another dimension are keywords now — "how many patients are in",
-"how many patients per".
+This trap caught three attempts in a row. "how many participants" claimed "…in each phase";
+"how many patients" claimed it too; and the narrower "how many patients are in" / "how many
+patients per" claimed "How many patients are in each phase?" and "How many patients per phase?"
+— the second of which could never have worked, since "per <dimension>" *is* a continuation.
+
+So the whole "how many <people>" family is banned rather than re-phrased. A question counting
+people is an `enrollment_sum` question, which this planner cannot express anyway; what it can
+answer is the *distribution* of trial sizes, and only phrasings naming size do that
+unambiguously ("how big", "sample size", "typical enrollment"). "How many patients are in these
+trials?" is therefore unplannable here and goes to the LLM, which is the honest outcome for a
+keyword matcher facing a question about a metric it has no way to emit.
 
 The consequence worth knowing before you file it as a bug: *"trials by phase over time"* hits
 `phase` first and returns a phase distribution, not a trend. That is the honest behaviour of a
@@ -92,8 +99,6 @@ TEMPLATES: Final[tuple[Template, ...]] = (
             "typical enrolment",
             "enrollment distribution",
             "enrolment distribution",
-            "how many patients are in",
-            "how many patients per",
         ),
         intent=Intent.HISTOGRAM,
         dimension="enrollment_count",

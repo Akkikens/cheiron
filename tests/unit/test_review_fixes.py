@@ -584,18 +584,34 @@ async def test_a_histogram_never_produces_an_other_bar(
 # --- fourth review pass ------------------------------------------------------------------------
 
 
-def test_a_keyword_must_not_continue_into_another_dimension() -> None:
-    """Twice now a broad enrollment phrasing has stolen a phase question.
+def test_the_how_many_people_keyword_family_stays_banned() -> None:
+    """Three attempts at this keyword family produced three shadowing bugs.
 
-    "how many participants" did it, was removed, and "how many patients" did exactly the same
-    thing on the next pass. Only phrasings that cannot continue into another dimension qualify.
+    "how many participants" stole "…in each phase"; "how many patients" stole it again; and the
+    narrower "how many patients are in" / "how many patients per" stole "How many patients are
+    in each phase?" and "How many patients per phase?" — the latter unfixable in principle,
+    since "per <dimension>" is a continuation by construction.
+
+    Counting people is an enrollment_sum question this planner cannot express. It answers the
+    *distribution* of trial sizes, so only size phrasings are keywords, and a question about
+    patient counts is unplannable here rather than answered with the wrong chart.
     """
     from app.planner.heuristic import match
 
-    assert match("How many patients are enrolled in each phase?").key == "phase"
-    assert match("How many participants are enrolled in each phase?").key == "phase"
-    assert match("How many patients are in these trials?").key == "enrollment"
+    for stolen in (
+        "How many patients are enrolled in each phase?",
+        "How many participants are enrolled in each phase?",
+        "How many patients are in each phase?",
+        "How many patients per phase?",
+    ):
+        assert match(stolen).key == "phase", stolen
+
+    assert match("How many patients are in trials by country?").key == "country"
+
+    # Size phrasings still work; a bare people-count does not, and that is the honest answer.
     assert match("How big are these trials?").key == "enrollment"
+    assert match("What is the typical enrollment?").key == "enrollment"
+    assert match("How many patients are in these trials?") is None
 
 
 async def test_retry_sleeps_stay_inside_the_budget_across_every_attempt(
@@ -650,3 +666,59 @@ def test_a_truncation_note_never_claims_a_denominator_it_does_not_have() -> None
     fanout_cut = note(shown=3, omitted=0)
     assert "Showing 3 of 3" not in fanout_cut
     assert "their number is unknown" in fanout_cut
+
+
+def test_a_narrowed_result_never_prints_a_negative_overlap() -> None:
+    """ "overlap -606" shipped, in the one block whose purpose is auditable arithmetic.
+
+    Narrowing the bucket set to the plotted categories moved `bucket_sum` without moving
+    `with_value`. Where the memberships counted fall short of the studies carrying a value, the
+    difference is not an overlap — it is the part that was never counted — and the zero branch
+    would have asserted "no study carries more than one phase", a claim invented by truncation.
+    """
+    from app.engine.coverage import build_coverage
+
+    full = BucketSet(
+        buckets=[
+            Bucket(key=f"K{i}", label=f"K{i}", value=100 - i, exactness="exact") for i in range(10)
+        ],
+        total=1_000,
+        unclassified=0,
+        semantics="overlapping",
+        mode="server_counts",
+    )
+
+    note = build_coverage(full.plotted_only({"K0", "K1", "K2", "K3"}), REGISTRY["phase"])[0]
+
+    assert note.overlap_note is not None
+    assert "overlap -" not in note.overlap_note
+    assert "cannot be quantified" in note.overlap_note
+    assert "no study in this result set carries more than one" not in note.overlap_note
+
+
+def test_a_real_overlap_is_still_quantified() -> None:
+    """The A1 shape must keep its numbers; the guard is for incomplete lists only."""
+    from app.engine.coverage import build_coverage
+
+    a1 = BucketSet(
+        buckets=[
+            Bucket(key=key, label=key, value=value, exactness="exact")
+            for key, value in (
+                ("NA", 53),
+                ("EARLY_PHASE1", 51),
+                ("PHASE1", 1039),
+                ("PHASE2", 1750),
+                ("PHASE3", 363),
+                ("PHASE4", 17),
+            )
+        ],
+        total=2_927,
+        unclassified=169,
+        semantics="overlapping",
+        mode="server_counts",
+    )
+
+    note = build_coverage(a1, REGISTRY["phase"])[0].overlap_note or ""
+
+    assert "overlap 515" in note
+    assert "2,758 studies" in note and "3,273 bucket memberships" in note
