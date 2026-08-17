@@ -8,6 +8,7 @@ the route is where it becomes an HTTP response.
 from __future__ import annotations
 
 import time
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,7 +25,7 @@ from app.engine.context import (
 )
 from app.engine.coverage import build_coverage
 from app.engine.dimensions import Dimension, resolve
-from app.engine.modes import counts, network, records
+from app.engine.modes import counts, network, records, sampled
 from app.engine.preflight import AggregationModeName, preflight, unimplemented_mode
 from app.errors import CheironError, ErrorCode
 from app.models.plan import AnalysisPlan, ChartType, Intent, Metric
@@ -98,7 +99,15 @@ async def analyze(
         else:
             if plan.metric is not Metric.STUDY_COUNT and pre.mode != "complete_records":
                 raise records.enrollment_unplannable(pre.total, settings.record_mode_threshold)
-            bucketset, studies = await _aggregate(plan, dim, ctx, pre.params, pre.total, pre.mode)
+            bucketset, studies = await _aggregate(
+                plan,
+                dim,
+                ctx,
+                pre.params,
+                pre.total,
+                pre.mode,
+                sample_pages=settings.sample_pages,
+            )
     except BudgetExhausted as exc:
         raise budget_error(exc) from exc
 
@@ -160,49 +169,56 @@ async def _aggregate(
     params: dict[str, str],
     total: int,
     mode: AggregationModeName,
+    *,
+    sample_pages: int,
 ) -> tuple[BucketSet, list[dict[str, Any]] | None]:
     if mode == "complete_records":
-        return await _run_records(plan, dim, ctx, params=params, total=total)
+        return await _once_more_on_new_data(
+            ctx, lambda: records.run(plan, dim, ctx, params=params, total=total)
+        )
+
+    if mode == "sampled_then_confirmed":
+        bucketset = await _once_more_on_new_data(
+            ctx,
+            lambda: sampled.run(
+                plan, dim, ctx, params=params, total=total, sample_pages=sample_pages
+            ),
+        )
+        return bucketset, None
 
     if mode != "server_counts":
         raise unimplemented_mode(mode, total, dim)
 
-    try:
-        bucketset = await counts.run(plan, dim, ctx, params=params, total=total)
-    except DataTimestampChanged:
-        # SPEC §7: retry the whole group-by once, then fail.
-        ctx.data_timestamp = await ctx.observed_data_timestamp()
-        try:
-            bucketset = await counts.run(plan, dim, ctx, params=params, total=total)
-        except DataTimestampChanged as exc:
-            raise CheironError(
-                ErrorCode.UPSTREAM_ERROR,
-                f"ClinicalTrials.gov published a new dataset during the analysis "
-                f"({exc.captured} → {exc.observed}) and a retry still saw movement.",
-            ) from exc
+    bucketset = await _once_more_on_new_data(
+        ctx, lambda: counts.run(plan, dim, ctx, params=params, total=total)
+    )
     return bucketset, None
 
 
-async def _run_records(
-    plan: AnalysisPlan,
-    dim: Dimension,
-    ctx: RunContext,
-    *,
-    params: dict[str, str],
-    total: int,
-) -> tuple[BucketSet, list[dict[str, Any]]]:
+async def _once_more_on_new_data[T](ctx: RunContext, run: Callable[[], Awaitable[T]]) -> T:
+    """SPEC §7: if the dataset moved mid-fan-out, redo the whole group-by once, then fail.
+
+    Retrying the *whole* group-by rather than the failed bucket is the point — the guarantee is
+    that no chart ever mixes two dataset revisions, and a per-bucket retry would produce exactly
+    that mixture.
+
+    The re-capture between attempts is load-bearing: the retry runs against the dataset that
+    *replaced* the one we started on, so without it the second attempt compares against a stale
+    timestamp and fails by construction.
+    """
     try:
-        return await records.run(plan, dim, ctx, params=params, total=total)
+        return await run()
     except DataTimestampChanged:
         ctx.data_timestamp = await ctx.observed_data_timestamp()
-        try:
-            return await records.run(plan, dim, ctx, params=params, total=total)
-        except DataTimestampChanged as exc:
-            raise CheironError(
-                ErrorCode.UPSTREAM_ERROR,
-                f"ClinicalTrials.gov published a new dataset during the analysis "
-                f"({exc.captured} → {exc.observed}) and a retry still saw movement.",
-            ) from exc
+
+    try:
+        return await run()
+    except DataTimestampChanged as exc:
+        raise CheironError(
+            ErrorCode.UPSTREAM_ERROR,
+            f"ClinicalTrials.gov published a new dataset during the analysis "
+            f"({exc.captured} → {exc.observed}) and a retry still saw movement.",
+        ) from exc
 
 
 def _filters_applied(plan: AnalysisPlan) -> dict[str, Any]:

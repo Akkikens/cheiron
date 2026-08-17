@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     max_upstream_requests: int = Field(default=40, gt=0)
     max_concurrency: int = Field(default=8, gt=0)
     record_mode_threshold: int = Field(default=2_000, gt=0)
+    sample_pages: int = Field(default=3, gt=0)
+    """Label-discovery pages in `sampled_then_confirmed`. Pages are serial, so this is a direct
+    latency cost; 3 pages of 1,000 studies is the most that fits the request budget alongside the
+    confirmation wave."""
 
     @model_validator(mode="after")
     def _require_key_only_when_enabled(self) -> Self:

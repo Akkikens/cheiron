@@ -316,11 +316,17 @@ async def test_preflight_url_carries_the_a1_shape(settings: Settings) -> None:
 
 
 def test_unimplemented_modes_refuse_rather_than_downgrade() -> None:
+    """The guard's shape, for the day a fourth mode is added and left unwired.
+
+    All three modes in `AggregationModeName` are implemented as of T11, so this can only fire
+    defensively — but a silent downgrade is the failure it exists to prevent, and deleting the
+    guard is how that failure gets reintroduced.
+    """
     error = unimplemented_mode("sampled_then_confirmed", 51_610, REGISTRY["lead_sponsor"])
 
     assert error.code is ErrorCode.UNPLANNABLE_QUERY
     assert "51,610" in error.message
-    assert "not implemented" in error.message
+    assert "not available" in error.message
     assert error.details[0]["suggestion"]
 
 

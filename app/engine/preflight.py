@@ -64,22 +64,19 @@ async def preflight(
 
 
 def unimplemented_mode(mode: AggregationModeName, total: int, dim: Dimension) -> CheironError:
-    """Modes T10 and T11 own. A clear refusal, never a silent downgrade to a mode that lies.
+    """A defensive guard, now that all three modes are implemented.
 
-    Downgrading `sampled_then_confirmed` to `server_counts` would be impossible anyway — there
-    is no enum to fan out over — but downgrading it to a truncated `complete_records` read would
-    return a relevance-ranked slice that looks authoritative and is not (SPEC §5.4).
+    Kept rather than deleted because the alternative to an explicit refusal is a silent
+    downgrade, and every available downgrade lies. Falling back from
+    `sampled_then_confirmed` to `server_counts` is impossible — there is no enum to fan out
+    over — and falling back to a truncated `complete_records` read returns a relevance-ranked
+    slice that looks authoritative and is not (SPEC §5.4). If a fourth mode is ever added and
+    left unwired, this is what the caller gets instead of a plausible wrong chart.
     """
-    reason = {
-        "sampled_then_confirmed": (
-            f"{dim.key!r} has an open vocabulary, so grouping {total:,} studies needs the "
-            "sampling mode, which is not implemented yet"
-        ),
-    }.get(mode, f"{mode} is not implemented yet")
-
     return CheironError(
         ErrorCode.UNPLANNABLE_QUERY,
-        f"This question cannot be answered exactly right now: {reason}.",
+        f"This question cannot be answered exactly right now: the {mode} aggregation mode is "
+        f"not available for the {total:,} studies that match.",
         details=[
             {
                 "aggregation_mode": mode,
