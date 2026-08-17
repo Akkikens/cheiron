@@ -461,6 +461,11 @@ buckets: NA 53 · EARLY_PHASE1 51 · PHASE1 1039 · PHASE2 1750 · PHASE3 363 ·
 Response must report `bucket_sum: 3273`, `unclassified_count: 169`,
 `groupby_semantics: "overlapping"`, and must **not** contain a share/percentage field.
 
+`PHASE1∩PHASE2` is the one number here that no response can carry, because there is no
+phase-by-phase cross-tab to put it in. `scripts/verify_upstream.py --a1` counts it live so
+it is not quoted on trust: 472 of the 515 overlapping memberships are that single pairing,
+which is what a phase 1/2 registration looks like in the data.
+
 **A2: exact-match discipline.** `AREA[LeadSponsorName]"Merck"` = 2733 but
 `AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` = 1841. A sponsor bar
 chart must report 1841. The `AREA[]` prefix is part of the predicate: the same expression

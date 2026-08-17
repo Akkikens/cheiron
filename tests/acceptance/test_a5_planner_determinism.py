@@ -95,3 +95,31 @@ async def test_a5_interpretation_never_carries_a_count(vocab: Vocabulary) -> Non
         result = await HeuristicPlanner().plan(AnalyzeRequest.model_validate(payload), vocab)
         digits = [token for token in result.plan.interpretation.split() if token.isdigit()]
         assert all(len(token) == 4 for token in digits)  # years only
+
+
+async def test_a5_the_llm_path_is_deterministic_by_not_being_asked_twice(
+    vocab: Vocabulary,
+) -> None:
+    """A5 covers the model path too, and a model is not deterministic by construction.
+
+    `temperature=0` and a fixed `seed` are requests, not guarantees. What actually makes a repeated
+    question return a byte-identical plan is the plan cache, so that is what gets asserted: one
+    model call, two identical plans, and the second one still labelled `llm` rather than losing its
+    provenance on the way through the cache.
+    """
+    import json
+
+    from app.cache import TTLStore
+    from app.planner.llm import CachedPlan, LLMPlanner
+    from tests.unit.test_llm_planner import Model, a_plan_payload
+
+    model = Model(json.dumps(a_plan_payload()))
+    planner = LLMPlanner(model, cache=TTLStore[CachedPlan]())
+    request = AnalyzeRequest(query="How many pembrolizumab trials by phase?")
+
+    first = await planner.plan(request, vocab)
+    second = await planner.plan(request, vocab)
+
+    assert model.calls == 1, "the second identical question reached the model"
+    assert first.plan == second.plan
+    assert second.planner == "llm"

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response, status
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,6 +19,9 @@ from app.errors import install_error_handlers, install_request_id_middleware
 from app.models.request import AnalyzeRequest
 from app.models.response import AnalyzeResponse
 from app.planner.llm import CachedPlan, ChatCompleter, openai_completer
+
+INSTANCE_ID = uuid.uuid4().hex[:8]
+"""Identifies this process in `/health`. See the cache block there for why it is published."""
 
 
 def create_app(
@@ -69,18 +73,30 @@ def create_app(
     install_error_handlers(app)
 
     @app.get("/health")
-    async def health() -> dict[str, Any]:
+    async def health(response: Response) -> dict[str, Any]:
+        # Either the startup warm succeeded or a request has since loaded it lazily. Reading only
+        # the warm flag reported "unavailable" forever on a host that skips lifespan, while
+        # /analyze worked fine.
+        vocabulary = "ok" if app.state.vocabulary_ready else vocabulary_cache.state
+
+        # `status` has to move when the service cannot serve, or the endpoint is decoration: an
+        # orchestrator reading `status: "ok"` keeps routing traffic to an instance whose
+        # /studies/enums load failed, and every /analyze there is a 5xx. `not_loaded` is not that
+        # case: no request has needed the vocabulary yet, which is where a cold instance starts.
+        degraded = vocabulary == "unavailable"
+        if degraded:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
         return {
-            "status": "ok",
+            "status": "degraded" if degraded else "ok",
             "llm_enabled": resolved.llm_enabled,
-            # Either the startup warm succeeded or a request has since loaded it lazily. Reading
-            # only the warm flag reported "unavailable" forever on a host that skips lifespan,
-            # while /analyze worked fine.
-            "vocabulary": "ok"
-            if (app.state.vocabulary_ready or vocabulary_cache.loaded)
-            else "unavailable",
-            # Caching is a stated property (SPEC §1, §7), so it is observable rather than assumed.
+            "vocabulary": vocabulary,
+            # Caching is a stated property (SPEC §1, §7), so it is observable rather than
+            # assumed. `instance` is what makes the counters readable: they are per process, and
+            # a serverless host gives each cold instance its own, so two consecutive calls that
+            # report different instances explain a hit count of zero better than any prose can.
             "cache": {
+                "instance": INSTANCE_ID,
                 "plan": app.state.plan_cache.stats(),
                 "result": app.state.result_cache.stats(),
             },

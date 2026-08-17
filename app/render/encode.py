@@ -47,21 +47,25 @@ def render(
             "No studies matched these filters; returning an empty visualization rather than "
             "a fabricated row."
         )
+        # Keep the shape the caller asked for where the empty form is still valid; only the
+        # row-shaped charts collapse to a table. Returning TABLE with {nodes, edges} would fail
+        # the response model's own encoding check and turn a legitimate empty answer into a 500.
+        empty_type = (
+            chart_type
+            if chart_type in (ChartType.KPI, ChartType.NETWORK_GRAPH)
+            else ChartType.TABLE
+        )
         return (
             Visualization(
-                # Keep the shape the caller asked for where the empty form is still valid; only
-                # the row-shaped charts collapse to a table. Returning TABLE with {nodes, edges}
-                # would fail the response model's own encoding check and turn a legitimate empty
-                # answer into a 500.
-                type=chart_type
-                if chart_type in (ChartType.KPI, ChartType.NETWORK_GRAPH)
-                else ChartType.TABLE,
+                type=empty_type,
                 title=_title(plan, dim),
                 subtitle=_subtitle(bucketset, ctx),
-                encoding=_empty_encoding(chart_type, dim),
-                data=[]
-                if chart_type is not ChartType.NETWORK_GRAPH
-                else {"nodes": [], "edges": []},
+                # Derived from the type actually being published, not from the type that was
+                # asked for. A zero-result table used to carry an x/y encoding, so a client that
+                # reads `encoding.columns` for a table found nothing and an empty result was a
+                # different contract from a populated one.
+                encoding=_empty_encoding(empty_type, dim, plan.metric, ctx.vocab),
+                data={"nodes": [], "edges": []} if empty_type is ChartType.NETWORK_GRAPH else [],
             ),
             warnings,
         )
@@ -550,18 +554,21 @@ def _encoding(
     return {"x": x_channel, "y": y_channel}
 
 
-def _empty_encoding(chart_type: ChartType, dim: Dimension) -> dict[str, Any]:
-    if chart_type is ChartType.KPI:
-        return {
-            "value": {"field": "study_count", "type": "quantitative", "label": "Number of trials"},
-            "label": {"field": f"{dim.key}_label", "type": "nominal", "label": dim.label},
-        }
+def _empty_encoding(
+    chart_type: ChartType, dim: Dimension, metric: Metric, vocab: Vocabulary
+) -> dict[str, Any]:
+    """The encoding a populated chart of this type would publish, with no rows behind it.
+
+    An empty result is still the same contract: the channels, their labels, the sort array and a
+    table's columns are all properties of the chart type, not of whether any study matched.
+    """
     if chart_type is ChartType.NETWORK_GRAPH:
-        return {"nodes": {"id": "id"}, "edges": {"source": "source"}}
-    return {
-        "x": {"field": dim.key, "type": "nominal", "label": dim.label},
-        "y": {"field": "study_count", "type": "quantitative", "label": "Number of trials"},
-    }
+        # Matching `network.py` exactly, and the response model pins the key set to {nodes, edges}.
+        return {
+            "nodes": {"id": "id", "label": "label"},
+            "edges": {"source": "source", "target": "target"},
+        }
+    return _encoding(chart_type, dim, metric, vocab, [])
 
 
 CHOROPLETH_MIN_COVERAGE = 0.95

@@ -23,10 +23,10 @@ def test_health_reports_degraded_mode(settings: Settings, enums_handler: Handler
     assert body["llm_enabled"] is False
     assert body["vocabulary"] == "ok"
     # Caching is a stated property, so /health reports it rather than leaving it to be assumed.
-    assert body["cache"] == {
-        "plan": {"hits": 0, "misses": 0, "entries": 0},
-        "result": {"hits": 0, "misses": 0, "entries": 0},
-    }
+    assert body["cache"]["plan"] == {"hits": 0, "misses": 0, "entries": 0}
+    assert body["cache"]["result"] == {"hits": 0, "misses": 0, "entries": 0}
+    # The counters are per process, so they are only readable next to the process they belong to.
+    assert len(body["cache"]["instance"]) == 8
 
 
 def test_health_reports_llm_enabled(enums_handler: Handler) -> None:
@@ -47,8 +47,28 @@ def test_unreachable_enums_does_not_stop_startup(settings: Settings) -> None:
     with _client(settings, failing) as client:
         response = client.get("/health")
 
+    # 503, because `status: "ok"` next to an unloadable vocabulary is a health check that keeps
+    # an instance in rotation while every /analyze on it fails.
+    assert response.status_code == 503
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["vocabulary"] == "unavailable"
+
+
+def test_a_cold_instance_is_healthy_before_anything_loads_the_vocabulary(
+    settings: Settings, enums_handler: Handler
+) -> None:
+    """ "Nobody has asked yet" is not a fault, and conflating it with one fails every cold start.
+
+    No context manager here, deliberately: that is what skips lifespan, which is exactly what a
+    serverless host does. The vocabulary loads on the first /analyze instead.
+    """
+    app = create_app(settings, transport=stub_transport(settings, enums_handler))
+    response = TestClient(app).get("/health")
+
     assert response.status_code == 200
-    assert response.json()["vocabulary"] == "unavailable"
+    assert response.json()["status"] == "ok"
+    assert response.json()["vocabulary"] == "not_loaded"
 
 
 def test_every_response_carries_a_request_id(settings: Settings, enums_handler: Handler) -> None:

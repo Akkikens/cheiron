@@ -190,3 +190,53 @@ async def test_axes_state_what_they_count(settings: Settings, vocab: Vocabulary)
 
     assert counted.encoding["y"]["unit"] == "studies"
     assert enrolled.encoding["y"]["unit"] == "participants"
+
+
+async def test_an_empty_result_publishes_the_same_contract_as_a_populated_one(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """An empty result is not a different chart contract.
+
+    The zero-row case collapses to `table` but used to carry an x/y encoding, so a client that
+    switches on `type` and reads `encoding.columns` got nothing back for a table. The channels are
+    a property of the chart type, not of whether any study matched.
+    """
+    ctx = await a_ctx(settings, vocab, max_buckets=20)
+    plan = a_plan()
+    dim = REGISTRY["phase"]
+
+    populated, _ = render(
+        plan,
+        a_bucketset([Bucket(key="PHASE2", label="Phase 2", value=7.0, exactness="exact")]),
+        ChartType.TABLE,
+        dim,
+        ctx,
+    )
+    empty, warnings = render(plan, a_bucketset([], total=0), ChartType.BAR_CHART, dim, ctx)
+
+    assert empty.type is ChartType.TABLE
+    assert empty.data == []
+    assert any("empty visualization" in warning for warning in warnings)
+    assert [column["field"] for column in empty.encoding["columns"]] == [
+        column["field"] for column in populated.encoding["columns"]
+    ]
+
+
+async def test_an_empty_network_keeps_the_network_contract(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """The response model pins network encoding to exactly {nodes, edges}, populated or not."""
+    ctx = await a_ctx(settings, vocab, max_buckets=20)
+
+    empty, _ = render(
+        a_plan(),
+        a_bucketset([], total=0),
+        ChartType.NETWORK_GRAPH,
+        REGISTRY["intervention_name"],
+        ctx,
+    )
+
+    assert empty.type is ChartType.NETWORK_GRAPH
+    assert empty.data == {"nodes": [], "edges": []}
+    assert set(empty.encoding) == {"nodes", "edges"}
+    assert empty.encoding["edges"] == {"source": "source", "target": "target"}

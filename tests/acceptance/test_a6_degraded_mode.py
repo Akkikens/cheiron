@@ -11,7 +11,9 @@ import pytest
 
 from app.config import Settings
 from tests.acceptance.conftest import analyze, assert_contract
+from tests.acceptance.test_a5_planner_determinism import GOLDEN
 from tests.unit.test_engine_counts import A1_BUCKETS, A1_TOTAL, a1_upstream
+from tests.unit.test_records import PagingUpstream, phase_fixture
 
 QUESTION = {"query": "How many trials by phase?", "drug_name": "Pembrolizumab"}
 
@@ -56,3 +58,27 @@ def test_a6_a_question_outside_the_templates_is_refused_not_guessed(keyless: Set
 
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "unplannable_query"
+
+
+@pytest.mark.parametrize(("payload", "intent", "dimension"), GOLDEN)
+def test_a6_every_covered_question_answers_with_no_key_present(
+    payload: dict[str, object], intent: str, dimension: str, keyless: Settings
+) -> None:
+    """SPEC A6 says the golden questions, plural, so run all of them through the API.
+
+    One question proved the wiring; it could not prove coverage. A keyword added to the fallback
+    planner that re-routes a question is caught by A5, but a dimension that plans fine and then
+    fails to aggregate or encode is only caught here.
+    """
+    # Under the record-mode threshold, so every dimension aggregates from the same in-memory
+    # result set: one stub exercises the whole registry, including the network and scatter paths.
+    upstream = PagingUpstream(phase_fixture(600), total=600)
+    response = analyze(keyless, upstream.handler(), payload)
+
+    assert response.status_code == 200, response.text
+    assert_contract(response)
+
+    body = response.json()
+    assert body["meta"]["planner"] == "heuristic_fallback"
+    assert body["visualization"]["type"]
+    assert body["meta"]["interpretation"]

@@ -55,6 +55,23 @@ def assert_contract(response: Any) -> None:
         assert body["error"]["request_id"]
         return
 
+    # The suite claims to be pinned to a recorded revision, so something has to check it. Without
+    # this, `DATA_TIMESTAMP` was a comment: a re-recorded fixture could move every number in the
+    # suite and nothing would say so.
+    assert body["meta"]["provenance"]["data_timestamp"] == DATA_TIMESTAMP, (
+        "this response was served from a different dataset revision than the one these numbers "
+        "were recorded against; re-run scripts/record_fixtures.py and update the expectations"
+    )
+
+    # Any citation that is present has to be followable. An empty list is legitimate (the budget
+    # can cut citations, and a zero-count bucket has nothing to cite); a citation without a study
+    # id or a URL is not.
+    rows = body["visualization"]["data"]
+    for row in rows if isinstance(rows, list) else []:
+        for citation in row.get("citations") or []:
+            assert citation["nct_id"].startswith("NCT")
+            assert citation["nct_id"] in citation["url"]
+
     # No bare truncation flag anywhere in the payload (SPEC §4.3).
     assert "truncated" not in _flatten_keys(body)
 

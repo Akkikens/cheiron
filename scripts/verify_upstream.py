@@ -132,12 +132,36 @@ async def run_a1(client: CTGClient, settings: Settings) -> int:
 
     with_value = bucketset.total - bucketset.unclassified
     overlap = bucketset.bucket_sum - with_value
-    recorded = {"total": 2_927, "unclassified": 169, "bucket_sum": 3_273, "overlap": 515}
+
+    # The pair SPEC A1 quotes alongside the totals. It is the only number in that block that no
+    # response can show, because the engine offers no phase-by-phase cross-tab, so it was quoted
+    # for a long time with nothing verifying it. One count settles it, and it is worth having:
+    # 472 of the 515 overlapping memberships are this one pairing, which is what a phase 1/2
+    # registration looks like in the data.
+    pair = await client.count(
+        {
+            **pre.params,
+            "filter.advanced": Essie.and_(
+                pre.params.get("filter.advanced") or Essie.all_(),
+                Essie.field_eq("Phase", "PHASE1"),
+                Essie.field_eq("Phase", "PHASE2"),
+            ),
+        }
+    )
+
+    recorded = {
+        "total": 2_927,
+        "unclassified": 169,
+        "bucket_sum": 3_273,
+        "overlap": 515,
+        "PHASE1∩PHASE2": 472,
+    }
     actual = {
         "total": bucketset.total,
         "unclassified": bucketset.unclassified,
         "bucket_sum": bucketset.bucket_sum,
         "overlap": overlap,
+        "PHASE1∩PHASE2": pair,
     }
 
     drifted = 0

@@ -552,8 +552,8 @@ for that step: including the two commits that say a shipped chart was a fabricat
   suite remains the regression net, because it can drive failure modes a live key cannot.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **Seven adversarial review passes found 45 defects** the spec-derived tests could not see:
-  nine, twelve, six, five, four, six, then three. The tail is the interesting part: later passes kept finding
+- **Nine adversarial review passes found 57 defects** the spec-derived tests could not see:
+  nine, twelve, six, five, four, six, three, eight, then four. The tail is the interesting part: later passes kept finding
   defects *introduced by the previous pass's fixes*, and they clustered. Five consecutive fixes to
   `coverage.py` each introduced the next, because the file tracked one flag for two different
   events: an aggregation that stopped early, where nothing beyond the cap was ever counted, and
@@ -569,6 +569,24 @@ for that step: including the two commits that say a shipped chart was a fabricat
   disclosure failures of the same family the service exists to prevent: a sample coverage that
   averaged two ratios over different populations and claimed 45.5% where the truth was 1.9%, and
   a chart that plotted three of ten categories while `meta.coverage` reconciled as complete.
+
+  The last two passes found the same class in new places. A forty-year trend failed as a timeout
+  before issuing a single request, because the fan-out needed 42 upstream calls against a budget
+  of 40; a time axis now counts the most recent affordable window and says so, while a closed
+  vocabulary still refuses, because a phase chart missing phases is the partial aggregation §4.5
+  exists to prevent. A series overlay could overwrite the caller's own hard constraint, so a
+  Merck-against-Pfizer comparison under `sponsor=Novartis` counted Merck and Pfizer while
+  `filters_applied` reported Novartis; the contradiction is now refused rather than resolved in
+  either direction, since both directions fabricate. And the smuggled-count check was too strict
+  in the other direction: any digit that was not a filter year failed a plan, so `PD-1` and
+  `SARS-CoV-2` were 422s.
+
+  Two were features that could not happen. An "Other" rollup was documented in this README and in
+  the spec, but every aggregation mode caps at `max_buckets` first, so the branch was unreachable,
+  and reaching it would have drawn a bar that `meta.coverage.bucket_sum` does not account for. The
+  acceptance suite declared a recorded `dataTimestamp` and never asserted it, so a re-recorded
+  fixture could have moved every number in it silently. Both are the same failure as a missing
+  disclosure: a claim with nothing behind it.
 - **Running it found what reading it did not.** `scripts/showcase.py` caught two bugs on its
   first run: stacking read the wrong dimension's partition flag, and a capped bucket list was
   reported as an unexplained reconciliation failure: both in code the tests covered.
@@ -591,7 +609,9 @@ particular changed real behaviour rather than style.
   question would be better served by quantile bins computed from the result set.
 - **Caches are in-process, and on the deployment that means per-instance.** Correct for a
   stateless service, but serverless gives each cold instance its own, so the plan cache helps far
-  less there than in a long-lived process. A shared store is the fix.
+  less there than in a long-lived process. A shared store is the fix. `/health` publishes a
+  `cache.instance` id for this reason: two calls that come back with different ids are two
+  processes, which is why the hit counts on the deployed link often read zero.
 - **The deployed endpoint is public and calls a real model.** Plan calls are small and bounded at
   three per request, and repeat questions hit the plan cache, but there is no auth or rate limit
   in front of it: acceptable for a review link, not for anything else.

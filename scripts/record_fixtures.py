@@ -3,7 +3,7 @@
     python scripts/record_fixtures.py
 
 Everything written here is a verbatim upstream response, so the offline suite asserts
-against real bytes. Public ClinicalTrials.gov data only — no credentials are involved.
+against real bytes. Public ClinicalTrials.gov data only, so no credentials are involved.
 """
 
 from __future__ import annotations

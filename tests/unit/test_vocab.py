@@ -170,3 +170,39 @@ async def test_warm_reports_failure_without_raising(settings: Settings) -> None:
 
     assert await cache.warm(client) is False
     assert cache.loaded is False
+
+
+async def test_the_cache_distinguishes_never_asked_from_tried_and_failed(
+    settings: Settings, enums_handler: Handler
+) -> None:
+    """Three states, and `/health` turns exactly one of them into a 503.
+
+    Collapsing them meant a cold serverless instance looked broken and a genuinely broken one
+    looked fine, which are the two ways a health check can be useless.
+    """
+    healthy = True
+    now = [0.0]
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        if healthy:
+            return enums_handler(request)
+        return httpx.Response(503, text="down")
+
+    cache = VocabularyCache(ttl_seconds=100.0, clock=lambda: now[0])
+    client = CTGClient(stub_transport(settings, flaky, attempts=1))
+
+    assert cache.state == "not_loaded"
+
+    await cache.get(client)
+    assert cache.state == "ok"
+
+    # A refresh fails over a copy still being served: a warning, not an outage.
+    healthy = False
+    now[0] = 101.0
+    await cache.get(client)
+    assert cache.state == "stale"
+
+    # Nothing loaded and the attempt failed: the only state that stops /analyze answering.
+    empty = VocabularyCache()
+    assert await empty.warm(client) is False
+    assert empty.state == "unavailable"

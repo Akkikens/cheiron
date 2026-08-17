@@ -309,7 +309,7 @@ def _check_interpretation(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
     for quotable in sorted(_all_quotable_text(plan, vocab), key=len, reverse=True):
         residue = re.sub(re.escape(quotable), " ", residue, flags=re.IGNORECASE)
 
-    # Years are only allowed when they appear as filter bounds — otherwise "2024 trials" is a
+    # A year is only allowed when it appears as a filter bound. Otherwise "2024 trials" is a
     # year-shaped count the model invented.
     smuggled = _smuggled_counts(residue, _filter_years(plan))
     if smuggled:

@@ -130,10 +130,25 @@ class VocabularyCache:
         self._ttl_seconds = ttl_seconds
         self._clock = clock
         self._vocabulary: Vocabulary | None = None
+        self._load_failed = False
 
     @property
     def loaded(self) -> bool:
         return self._vocabulary is not None
+
+    @property
+    def state(self) -> str:
+        """What `/health` reports. Three outcomes, and they are not interchangeable.
+
+        `not_loaded` means nothing has asked yet, which is the normal state of a serverless
+        instance between cold start and first request: it is not a fault. `stale` means a refresh
+        failed over a copy that is still being served, which is a warning. `unavailable` means
+        there is no vocabulary and an attempt failed, and that is the only one that makes
+        `/analyze` unable to answer.
+        """
+        if self._vocabulary is None:
+            return "unavailable" if self._load_failed else "not_loaded"
+        return "stale" if self._load_failed else "ok"
 
     async def get(self, client: CTGClient) -> Vocabulary:
         current = self._vocabulary
@@ -145,6 +160,7 @@ class VocabularyCache:
         try:
             refreshed = await Vocabulary.load(client, clock=self._clock)
         except Exception:
+            self._load_failed = True
             if current is None:
                 raise
             # A stale vocabulary beats no vocabulary; enum values change on the order of years.
@@ -152,6 +168,7 @@ class VocabularyCache:
             return current
 
         self._vocabulary = refreshed
+        self._load_failed = False
         return refreshed
 
     async def warm(self, client: CTGClient) -> bool:
