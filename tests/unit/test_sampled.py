@@ -444,3 +444,66 @@ async def test_a_partial_sample_still_hedges(settings: Settings) -> None:
 
     assert "may be missing from this chart" in partial
     assert "5.2%" in partial
+
+
+async def test_casings_of_one_label_are_confirmed_once_not_twice(settings: Settings) -> None:
+    """The bug this fixture pins reported double the studies that exist.
+
+    Discovery reads raw record text, so "Placebo" and "placebo" arrived as two labels. Confirmation
+    asks upstream, which matches text case-insensitively, so *each* came back with the full count
+    and the chart drew one drug twice at full height. Verified against the live API:
+    `COVERAGE[FullMatch]"placebo"`, `"Placebo"` and `"PLACEBO"` all return the same 305 studies for
+    migraine.
+    """
+    page = (
+        [sponsor_study(f"NCT{i:08d}", "Acme Labs") for i in range(5)]
+        + [sponsor_study(f"NCT1{i:07d}", "acme labs") for i in range(3)]
+        + [sponsor_study(f"NCT2{i:07d}", "Pfizer") for i in range(2)]
+    )
+    counts = {
+        # Upstream is case-insensitive, so whichever casing is sent returns the same number.
+        Essie.full_match("LeadSponsorName", "Acme Labs"): 900,
+        Essie.full_match("LeadSponsorName", "acme labs"): 900,
+        Essie.full_match("LeadSponsorName", "Pfizer"): 3_862,
+        Essie.missing("LeadSponsorName"): 412,
+    }
+    upstream = Upstream([page], counts)
+    ctx = await a_context(settings, upstream)
+    params, _ = base_filter(a_plan().filters)
+
+    bucketset = await sampled.run(
+        a_plan(), REGISTRY["lead_sponsor"], ctx, params=params, total=TOTAL, sample_pages=3
+    )
+
+    # Ordered by confirmed count, so Pfizer's 3,862 leads.
+    keys = [bucket.key for bucket in bucketset.buckets]
+    assert keys == ["Pfizer", "Acme Labs"], "the two casings are one label"
+    # 900, not 1,800: the group is confirmed once.
+    assert bucketset.bucket_sum == 900 + 3_862
+    # And it was confirmed once, so the second casing did not even cost a request.
+    confirmed = [p for p in upstream.confirmation_predicates if "Acme" in p or "acme" in p]
+    assert len(confirmed) == 1
+
+    merge_note = next(a for a in ctx.assumptions if "capitalisation" in a)
+    assert "1 lead_sponsor label(s)" in merge_note
+    assert "exact rather than an approximation" in merge_note
+
+
+async def test_the_surviving_casing_is_the_one_the_registry_uses_most(settings: Settings) -> None:
+    """Picking a casing ourselves would impose a spelling the registry does not use."""
+    page = [sponsor_study(f"NCT{i:08d}", "acme labs") for i in range(7)] + [
+        sponsor_study(f"NCT1{i:07d}", "ACME LABS") for i in range(2)
+    ]
+    counts = {
+        Essie.full_match("LeadSponsorName", "acme labs"): 900,
+        Essie.full_match("LeadSponsorName", "ACME LABS"): 900,
+        Essie.missing("LeadSponsorName"): 412,
+    }
+    ctx = await a_context(settings, Upstream([page], counts))
+    params, _ = base_filter(a_plan().filters)
+
+    bucketset = await sampled.run(
+        a_plan(), REGISTRY["lead_sponsor"], ctx, params=params, total=TOTAL, sample_pages=3
+    )
+
+    assert [bucket.key for bucket in bucketset.buckets] == ["acme labs"]

@@ -25,7 +25,16 @@ from app.engine.citations import (
     value_at,
 )
 from app.engine.context import RunContext
-from app.engine.dimensions import QUANTITATIVE_KEYS, REGISTRY, Dimension, bin_key, is_temporal
+from app.engine.dimensions import (
+    QUANTITATIVE_KEYS,
+    REGISTRY,
+    Dimension,
+    bin_key,
+    canonical_case,
+    case_merge_assumption,
+    is_free_text,
+    is_temporal,
+)
 from app.models.plan import AnalysisPlan, Metric
 from app.models.response import AggregationMode, Citation
 
@@ -116,6 +125,8 @@ def aggregate(
     members: dict[str, list[Mapping[str, Any]]] = {}
     unclassified = 0
 
+    fold = _case_map(studies, dim, ctx)
+
     for study in studies:
         keys = membership_keys(study, dim)
         if keys is None:
@@ -125,7 +136,10 @@ def aggregate(
         nct = _safe_nct(study)
         enrollment = enrollments_by_nct.get(nct) if nct else None
 
-        for key in keys:
+        # `dict.fromkeys` after folding, not before: one study can list both "Placebo" and
+        # "placebo" as separate arms, and counting the folded key twice for it would rebuild the
+        # double count in the bucket the fold exists to fix.
+        for key in dict.fromkeys(fold.get(key, key) for key in keys):
             counts[key] += 1
             members.setdefault(key, []).append(study)
             if plan.metric is not Metric.STUDY_COUNT and enrollment is not None:
@@ -201,6 +215,32 @@ async def run(
             f"using the fetched set."
         )
     return aggregate(studies, plan, dim, ctx), studies
+
+
+def _case_map(
+    studies: Sequence[Mapping[str, Any]], dim: Dimension, ctx: RunContext
+) -> dict[str, str]:
+    """Value -> display casing for a free-text dimension, empty for everything else.
+
+    Needs its own pass because the surviving casing is the most frequent one across the whole
+    result set, which is not knowable while the first study is still being counted.
+    """
+    if not is_free_text(dim):
+        return {}
+
+    observed: Counter[str] = Counter()
+    for study in studies:
+        keys = membership_keys(study, dim)
+        if keys:
+            observed.update(keys)
+
+    mapping, merged = canonical_case(observed)
+    if not merged:
+        return {}
+
+    example = next((display for value, display in mapping.items() if value != display), None)
+    ctx.assumptions.append(case_merge_assumption(f"{dim.key} label(s)", merged, example))
+    return mapping
 
 
 def membership_keys(study: Mapping[str, Any], dim: Dimension) -> list[str] | None:

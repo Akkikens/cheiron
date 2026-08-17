@@ -14,6 +14,7 @@ from typing import Any, Literal
 
 from app.engine.citations import nct_id_of, value_at
 from app.engine.context import RunContext
+from app.engine.dimensions import canonical_case, case_merge_assumption
 from app.models.plan import AnalysisPlan, ChartType
 from app.models.response import Visualization
 
@@ -49,8 +50,15 @@ def build(
     node_weights: Counter[str] = Counter()
     node_groups: dict[str, str] = {}
 
+    # Node names are free text, and the registry holds "Placebo" and "placebo" as separate
+    # strings for the same thing. Drawing both put one drug on the graph as two dots with the
+    # trials split between them, which reads as two treatments rather than one.
+    fold = _case_map(studies, chosen, ctx)
+
     for study in studies:
         left, right, group_left, group_right = _endpoints(study, chosen)
+        left = list(dict.fromkeys(fold.get(value, value) for value in left))
+        right = list(dict.fromkeys(fold.get(value, value) for value in right))
         if not left or not right:
             continue
         nct = _safe_nct(study)
@@ -182,6 +190,26 @@ def _network_title(plan: AnalysisPlan, pairing: Pairing) -> str:
 def _subtitle_from_total(total: int, data_timestamp: str) -> str:
     day = data_timestamp.split("T", 1)[0]
     return f"{total:,} studies · ClinicalTrials.gov, data as of {day}"
+
+
+def _case_map(
+    studies: Sequence[Mapping[str, Any]], pairing: Pairing, ctx: RunContext
+) -> dict[str, str]:
+    """Value -> display casing across every endpoint this pairing uses."""
+    observed: Counter[str] = Counter()
+    for study in studies:
+        left, right, _, _ = _endpoints(study, pairing)
+        observed.update(left)
+        if right is not left:
+            observed.update(right)
+
+    mapping, merged = canonical_case(observed)
+    if not merged:
+        return {}
+
+    example = next((display for value, display in mapping.items() if value != display), None)
+    ctx.assumptions.append(case_merge_assumption("graph node name(s)", merged, example))
+    return mapping
 
 
 def _endpoints(study: Mapping[str, Any], pairing: Pairing) -> tuple[list[str], list[str], str, str]:

@@ -204,3 +204,57 @@ def resolve(key: str) -> Dimension:
 
 def is_temporal(dim: Dimension) -> bool:
     return dim.key in TEMPORAL_KEYS
+
+
+def is_free_text(dim: Dimension) -> bool:
+    """True when the dimension's values are unnormalized strings from the registry."""
+    return dim.enum_name is None and dim.key not in QUANTITATIVE_KEYS and not is_temporal(dim)
+
+
+def canonical_case(counts: Mapping[str, int]) -> tuple[dict[str, str], int]:
+    """Map each observed value to the one casing that will represent its group.
+
+    ClinicalTrials.gov matches free-text values case-insensitively: `COVERAGE[FullMatch]"placebo"`,
+    `"Placebo"` and `"PLACEBO"` all return the same 305 studies for migraine. Treating the casings
+    as separate labels was wrong in both directions. In `sampled_then_confirmed` each casing was
+    discovered separately and then confirmed against a case-insensitive corpus, so `Placebo` and
+    `placebo` each came back with the full 2,650 and the chart asserted 5,300 trials where 2,650
+    exist. In `complete_records` the split was merely cosmetic, one drug drawn as two dots, but it
+    also meant the same question returned different labels either side of the 2,000-study
+    threshold.
+
+    Folding is exact rather than approximate in both modes: upstream counts one group, and the
+    in-memory path sums studies it has already read. The surviving casing is the most frequent
+    one, so the label stays the form the registry uses most, with ties broken lexicographically
+    for determinism.
+
+    Returns the value -> display map and how many groups had more than one casing.
+    """
+    groups: dict[str, list[str]] = {}
+    for value in counts:
+        groups.setdefault(value.casefold(), []).append(value)
+
+    mapping: dict[str, str] = {}
+    merged = 0
+    for variants in groups.values():
+        display = min(variants, key=lambda value: (-counts[value], value))
+        for value in variants:
+            mapping[value] = display
+        if len(variants) > 1:
+            merged += 1
+    return mapping, merged
+
+
+def case_merge_assumption(subject: str, merged: int, example: str | None = None) -> str:
+    """One sentence naming the merge, because a silently merged label is a silently lost one.
+
+    `subject` names *what* was merged rather than always naming the dimension: a network response
+    folds its graph nodes and its coverage buckets over different value sets, so two sentences
+    with different counts are two separate facts and have to be readable as such.
+    """
+    shown = f" (for example {example!r})" if example else ""
+    return (
+        f"{merged} {subject} differing only in capitalisation were merged{shown}. "
+        f"ClinicalTrials.gov matches these values case-insensitively, so each merged count is "
+        f"exact rather than an approximation."
+    )
