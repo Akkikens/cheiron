@@ -31,8 +31,11 @@ USER cheiron
 
 EXPOSE 8000
 
-# The vocabulary loads at startup from /studies/enums; /health reports it as unavailable rather
-# than refusing to boot if ClinicalTrials.gov is unreachable, which is why there is no wait here.
+# The vocabulary loads at startup from /studies/enums, and an unreachable ClinicalTrials.gov does
+# not stop the process from booting, which is why there is no wait here. It does make the container
+# unhealthy: /health answers 503 while there is no vocabulary, because an instance that cannot
+# serve /analyze should not stay in rotation. `urlopen` raises on 503, and an unhandled exception
+# exits non-zero, so raising *is* the unhealthy path: no try/except needed to get that right.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=4).status == 200 else 1)"
 
