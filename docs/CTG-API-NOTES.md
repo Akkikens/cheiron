@@ -26,6 +26,11 @@ GET /stats/field/values?fields=Phase&query.cond=cancer
 → 400  Invalid prefix in parameter name: query.cond
 ```
 
+It is not useless, though: for an **unfiltered** question it is the only way to get a field's
+complete value list. `?fields=LocationCountry&types=STRING` returns all **226** distinct country
+values with corpus-wide counts, which is where `app/render/countries.py` comes from (verified
+2026-08-16; head: United States 194,442 · China 53,094 · France 42,674 · Canada 32,342).
+
 **There is no server-side GROUP BY for a filtered query.** But `countTotal=true` returns
 an *exact* total for any query (no capping observed at any magnitude; the unfiltered
 total exactly equals `/stats/size` → `totalStudies`).
@@ -259,6 +264,21 @@ of the parameter set that produced it and refuse a mismatch.
 9. Very old records (e.g. NCT00000102) have empty `statusModule`/`designModule`.
 10. `markupFormat=legacy` bodies contain CRLF; default `markdown` differs from the
     pre-2025 classic pipeline. Geopoints now come from a different geo database.
+11. **Country names are ClinicalTrials.gov's own, not ISO-3166's.** Of the 226 distinct
+    `LocationCountry` values, twelve do not match the ISO tables by name at all and several more
+    use a different spelling: `South Korea` (ISO: "Korea, Republic of"), `Turkey (Türkiye)`,
+    `Czechia`, `The Gambia`, `The Bahamas`, `Macau`, `Micronesia`, `Holy See`,
+    `Federal Republic of Yugoslavia` (a state that no longer exists), and `Kosovo` (which has no
+    ISO code of its own). Two carry characters that survive a round trip and must not be
+    "tidied": `Côte d’Ivoire` uses a **curly** apostrophe, and
+    `"Bonaire, Saint Eustatius and Saba "` has a **trailing space** in the value itself. A map
+    keyed on tidied strings silently fails to match, which is how one unmapped country collapsed
+    a whole choropleth into a table.
+12. **`Retry-After` is worth handling even though no 429 was ever observed.** Rate limits remain
+    undocumented and unseen here (§4), but the header is the only explicit signal upstream could
+    send, and honouring it unboundedly would hold a request past its own budget. The client caps
+    what it *sleeps* at half `REQUEST_BUDGET_MS` while reporting upstream's real value to the
+    caller. **[unverified — no live 429 has been produced]**
 
 ---
 
