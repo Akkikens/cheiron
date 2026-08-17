@@ -39,7 +39,13 @@ def build_coverage(
     plotted_sum = bucketset.bucket_sum
     result_memberships = plotted_sum + int(bucketset.omitted_value)
     with_value = bucketset.total - bucketset.unclassified
-    partial = not bucketset.complete
+    # Two independent cuts, and conflating them was the cause of the last four bugs here.
+    # `capped` means values were never counted, so nothing about them can be quoted. `narrowed`
+    # means they were counted and then not drawn, so both the count and their memberships are
+    # known. Only `capped` costs us the overlap arithmetic.
+    capped = bucketset.aggregation_capped
+    narrowed = bucketset.omitted_buckets > 0
+    partial = capped or narrowed
 
     if not counts_studies:
         return (
@@ -73,7 +79,11 @@ def build_coverage(
             )
     else:
         overlap_note = _overlap_note(
-            dim, memberships=result_memberships, with_value=with_value, partial=partial
+            dim,
+            memberships=result_memberships,
+            with_value=with_value,
+            capped=capped,
+            warnings=warnings,
         )
         if partial:
             # Multi-valued dimensions take this branch, so without appending here a truncated
@@ -95,35 +105,39 @@ def build_coverage(
 
 
 def _truncation_note(bucketset: BucketSet, dim: Dimension) -> str:
-    """States what the chart draws against what the result held, in real numbers.
+    """States what the chart draws against what is known, for either cut or both together.
 
-    `bucket_sum` here covers only the plotted categories, because the bucket set was narrowed
-    before coverage was built — a sum over bars nobody can see is not a disclosure.
+    The two cuts compose, which the previous version assumed away: a fan-out that stopped at
+    `max_buckets` and an axis then narrowed for plotting both leave marks, and reading only
+    `omitted_buckets` printed "3 of 10" for a result whose true category count is unknown.
     """
     shown = len(bucketset.buckets)
     tail = (
         f"bucket_sum covers only the {shown:,} plotted. Each count shown is exact and they are "
         f"not expected to sum to the {bucketset.total:,} matching studies."
     )
+    counted = shown + bucketset.omitted_buckets
 
-    if bucketset.omitted_buckets:
-        # The chart's shared axis was capped, so both numbers are known.
-        present = shown + bucketset.omitted_buckets
+    if bucketset.aggregation_capped and bucketset.omitted_buckets:
         return (
-            f"Showing {shown:,} of {present:,} {dim.key} values, the rest cut by "
-            f"options.max_buckets; {tail}"
+            f"Showing {shown:,} of {counted:,} {dim.key} values counted, and the aggregation "
+            f"itself stopped at options.max_buckets, so further values exist whose number is "
+            f"unknown; {tail}"
         )
-
-    # The aggregation itself stopped at max_buckets, so the values beyond the cap were never
-    # counted and there is no denominator to quote. "Showing 3 of 3, the rest cut" — which this
-    # said when the cap bit during the fan-out rather than at the axis — is a contradiction.
+    if bucketset.aggregation_capped:
+        return (
+            f"Showing {shown:,} {dim.key} values; further values exist but were cut by "
+            f"options.max_buckets before they were counted, so their number is unknown. {tail}"
+        )
     return (
-        f"Showing {shown:,} {dim.key} values; further values exist but were cut by "
-        f"options.max_buckets before they were counted, so their number is unknown. {tail}"
+        f"Showing {shown:,} of {counted:,} {dim.key} values, the rest counted but not plotted "
+        f"because options.max_buckets caps the axis; {tail}"
     )
 
 
-def _overlap_note(dim: Dimension, *, memberships: int, with_value: int, partial: bool) -> str:
+def _overlap_note(
+    dim: Dimension, *, memberships: int, with_value: int, capped: bool, warnings: list[str]
+) -> str:
     """SPEC §4.3's exact shape, with the integers computed rather than described.
 
     A zero overlap is stated explicitly instead of omitting the note: on a multi-valued field,
@@ -134,17 +148,34 @@ def _overlap_note(dim: Dimension, *, memberships: int, with_value: int, partial:
     # The upstream field name, so a reader can go and check: `phases` for the phase dimension.
     field = dim.record_path.rsplit(".", 1)[-1]
 
-    if partial or overlap < 0:
-        # With an incomplete bucket list the memberships counted fall short of the studies that
-        # have a value, so their difference is not an overlap — it is the part that was never
-        # counted. Printing it as one produced "overlap -606"; asserting the zero branch instead
-        # would have manufactured "no study carries more than one phase", a claim about the data
-        # invented by truncation.
+    if capped:
+        # Values beyond the cap were never counted, so their memberships do not exist to be
+        # added: the difference is not an overlap, it is the missing part. Printing it as one
+        # produced "overlap -606", and the zero branch would have manufactured "no study carries
+        # more than one phase" — a claim about the data invented by truncation.
+        #
+        # Narrowing alone does NOT land here: those categories were counted and `omitted_value`
+        # kept their memberships, so the overlap stays exact and a disclaimer would be a
+        # regression from disclosure.
         return (
             f"{field} is multi-valued, so buckets overlap and do not sum to the total. The "
-            f"overlap cannot be quantified here because the bucket list is incomplete: "
-            f"{memberships:,} memberships were counted across the buckets present, against "
-            f"{with_value:,} studies carrying a value."
+            f"overlap cannot be quantified because the aggregation stopped at "
+            f"options.max_buckets: {memberships:,} memberships were counted across the full "
+            f"result, against {with_value:,} studies carrying a value."
+        )
+
+    if overlap < 0:
+        # Not a truncation effect — every value was counted — so this is upstream disagreeing
+        # with itself, which is exactly the case the partition branch warns about.
+        warnings.append(
+            f"{dim.key} counted {memberships:,} bucket memberships across a complete bucket "
+            f"list, fewer than the {with_value:,} studies reported as carrying a value. The "
+            f"per-bucket counts and the MISSING probe disagree; treat both as suspect."
+        )
+        return (
+            f"{field} is multi-valued, so buckets overlap and do not sum to the total. "
+            f"{memberships:,} memberships were counted against {with_value:,} studies carrying "
+            f"a value, which does not reconcile; see meta.warnings."
         )
 
     if overlap == 0:

@@ -201,11 +201,17 @@ async def analyze(
             plotted_crosstab_keys(cells, request.options.max_buckets)
         )
     elif cells is not None:
+        # No study carried both dimensions. Rendering an empty cross-tab would leave coverage
+        # describing categories that appear nowhere in the visualization — the same chart/result
+        # mismatch narrowing exists to prevent, in the other direction. Fall back to the primary
+        # distribution, which is a real answer to most of the question, and say what is missing.
         ctx.warnings.append(
             f"No study matched both {dim.key} and "
             f"{plan.secondary_group_by.dimension if plan.secondary_group_by else 'the secondary'}"
-            f", so the cross-tab is empty; the breakdown is absent from the data, not truncated."
+            f", so the requested breakdown is absent from the data rather than truncated; "
+            f"showing the {dim.key} distribution alone."
         )
+        cells = None
 
     coverage, coverage_warnings = build_coverage(
         bucketset, dim, counts_studies=plan.metric is Metric.STUDY_COUNT

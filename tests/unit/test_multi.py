@@ -561,7 +561,7 @@ async def test_coverage_describes_the_chart_that_was_drawn(
 
     untouched = merged.plotted_only(plotted_axis_keys(panels, 20))
     assert untouched.omitted_buckets == 0
-    assert untouched.complete
+    assert not untouched.aggregation_capped
 
 
 async def test_a_truncated_overlapping_dimension_also_discloses_the_cut(

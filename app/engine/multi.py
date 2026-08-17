@@ -132,7 +132,7 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
             unclassified=unclassified,
             semantics="partition" if dim.partition else "overlapping",
             mode=mode,
-            complete=all(panel.bucketset.complete for panel in panels),
+            aggregation_capped=any(panel.bucketset.aggregation_capped for panel in panels),
             # One population, one ratio: studies inspected over studies matched.
             sample_size=inspected if sampled_any else None,
             sample_coverage=(round(inspected / total, 3) if sampled_any and total else None),

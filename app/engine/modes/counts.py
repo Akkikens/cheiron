@@ -147,7 +147,7 @@ async def run(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
-        complete=complete,
+        aggregation_capped=not complete,
         warnings=warnings,
     )
 

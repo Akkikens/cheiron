@@ -8,6 +8,7 @@ implemented under a slightly different assumption.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
@@ -404,7 +405,7 @@ def test_a_capped_partition_is_not_reported_as_an_unexplained_difference() -> No
         # server_counts, because the response model rightly refuses a sampled mode with no
         # sample_size — the cap being tested here is max_buckets, not sampling.
         mode="server_counts",
-        complete=False,
+        aggregation_capped=True,
     )
 
     coverage, warnings = build_coverage(capped, REGISTRY["lead_sponsor"])
@@ -425,7 +426,7 @@ def test_a_complete_partition_that_does_not_reconcile_still_warns() -> None:
         unclassified=12,
         semantics="partition",
         mode="complete_records",
-        complete=True,
+        aggregation_capped=False,
     )
 
     _, warnings = build_coverage(complete, REGISTRY["study_type"])
@@ -655,7 +656,7 @@ def test_a_truncation_note_never_claims_a_denominator_it_does_not_have() -> None
             unclassified=0,
             semantics="partition",
             mode="server_counts",
-            complete=False,
+            aggregation_capped=True,
             omitted_buckets=omitted,
         )
         return build_coverage(bucketset, REGISTRY["lead_sponsor"])[0].overlap_note or ""
@@ -668,32 +669,57 @@ def test_a_truncation_note_never_claims_a_denominator_it_does_not_have() -> None
     assert "their number is unknown" in fanout_cut
 
 
-def test_a_narrowed_result_never_prints_a_negative_overlap() -> None:
-    """ "overlap -606" shipped, in the one block whose purpose is auditable arithmetic.
+def test_narrowing_keeps_the_overlap_exact_and_capping_does_not() -> None:
+    """The two cuts are not the same cut, and treating them alike caused four bugs here.
 
-    Narrowing the bucket set to the plotted categories moved `bucket_sum` without moving
-    `with_value`. Where the memberships counted fall short of the studies carrying a value, the
-    difference is not an overlap — it is the part that was never counted — and the zero branch
-    would have asserted "no study carries more than one phase", a claim invented by truncation.
+    Narrowing drops categories that *were counted*, so their memberships are known and the
+    overlap stays exact — degrading it to a disclaimer would be a regression from disclosure.
+    Capping means values were never counted, so the memberships that would complete the sum do
+    not exist and no overlap can be quoted. Neither may print a negative number.
     """
     from app.engine.coverage import build_coverage
 
+    # A realistic overlapping shape: 10 phases, memberships exceeding studies-with-a-value.
     full = BucketSet(
         buckets=[
-            Bucket(key=f"K{i}", label=f"K{i}", value=100 - i, exactness="exact") for i in range(10)
+            Bucket(key=f"K{i}", label=f"K{i}", value=200 - i, exactness="exact") for i in range(10)
         ],
+        total=1_200,
+        unclassified=200,
+        semantics="overlapping",
+        mode="server_counts",
+    )
+
+    narrowed = build_coverage(full.plotted_only({"K0", "K1", "K2"}), REGISTRY["phase"])[0]
+    assert narrowed.overlap_note is not None
+    assert "overlap -" not in narrowed.overlap_note
+    assert "overlap 955" in narrowed.overlap_note  # 1,955 memberships against 1,000 studies
+    assert "counted but not plotted" in narrowed.overlap_note
+    assert narrowed.bucket_sum == 597  # only the three drawn
+
+    capped = build_coverage(replace(full, aggregation_capped=True), REGISTRY["phase"])[0]
+    assert capped.overlap_note is not None
+    assert "cannot be quantified" in capped.overlap_note
+    assert "no study in this result set carries more than one" not in capped.overlap_note
+
+
+def test_a_complete_list_that_undercounts_is_an_upstream_fault_not_a_truncation() -> None:
+    """Reusing the truncation prose here asserted a cause that is false and hid a real fault."""
+    from app.engine.coverage import build_coverage
+
+    inconsistent = BucketSet(
+        buckets=[Bucket(key="K0", label="K0", value=100, exactness="exact")],
         total=1_000,
         unclassified=0,
         semantics="overlapping",
         mode="server_counts",
     )
 
-    note = build_coverage(full.plotted_only({"K0", "K1", "K2", "K3"}), REGISTRY["phase"])[0]
+    coverage, warnings = build_coverage(inconsistent, REGISTRY["phase"])
 
-    assert note.overlap_note is not None
-    assert "overlap -" not in note.overlap_note
-    assert "cannot be quantified" in note.overlap_note
-    assert "no study in this result set carries more than one" not in note.overlap_note
+    assert "overlap -" not in (coverage.overlap_note or "")
+    assert "does not reconcile" in (coverage.overlap_note or "")
+    assert any("disagree" in warning for warning in warnings)
 
 
 def test_a_real_overlap_is_still_quantified() -> None:
