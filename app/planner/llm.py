@@ -74,6 +74,20 @@ a result, and must never contain a number other than a year.
 Choose `group_by.dimension` from the available dimensions. Do not invent dimension names.
 Leave `viz_hint` null unless the question explicitly asks for a chart form; the chart is chosen \
 by a downstream registry that knows which forms are safe for the dimension.
+
+Pick `intent` by what the question is asking for, not by what sounds impressive:
+
+  distribution  how many trials fall into each category. The default.
+  trend         how something changed over time. Use group_by "start_year".
+  geo           where trials are run. Use group_by "country"; this renders as a map.
+  network       which entities appear together in the same trial, such as which drugs are
+                studied alongside each other. Use group_by "intervention_name".
+  histogram     how a numeric quantity is spread. Use group_by "enrollment_count".
+  scatter       one point per study, enrollment against start date. Use group_by
+                "enrollment_count".
+  comparison    two to four named groups set against each other. Fill `series`, one entry per
+                group, each with the filter that defines it. Only for an explicit comparison.
+  list          the caller wants rows rather than a chart.
 """
 
 

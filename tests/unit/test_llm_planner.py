@@ -366,3 +366,32 @@ async def test_metric_and_intent_survive_a_repair(vocab: Vocabulary) -> None:
 
     assert result.plan.intent is Intent.TREND
     assert result.plan.metric is Metric.STUDY_COUNT
+
+
+def test_the_prompt_explains_every_intent_the_schema_publishes() -> None:
+    """The schema is the model's action space; an unexplained option gets chosen badly.
+
+    Live, "Which countries run these trials?" planned as `distribution` rather than `geo`, so a
+    country question returned a bar chart where the README documents a map. The enum reached the
+    model through the schema, but nothing told it what the values meant.
+    """
+    from app.models.plan import Intent
+    from app.planner.llm import SYSTEM_PROMPT
+
+    for intent in Intent:
+        assert f"  {intent.value}" in SYSTEM_PROMPT, f"{intent.value} is undocumented in the prompt"
+
+
+def test_the_prompt_points_the_spatial_intents_at_their_dimensions() -> None:
+    """Naming the intent is not enough; each one has a dimension that makes it work."""
+    from app.planner.llm import SYSTEM_PROMPT
+
+    for intent, dimension in (
+        ("geo", "country"),
+        ("trend", "start_year"),
+        ("network", "intervention_name"),
+        ("histogram", "enrollment_count"),
+    ):
+        line = next(ln for ln in SYSTEM_PROMPT.splitlines() if ln.strip().startswith(intent))
+        block = SYSTEM_PROMPT.split(line, 1)[1][:200]
+        assert dimension in line or dimension in block, f"{intent} does not name {dimension}"
