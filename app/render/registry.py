@@ -7,7 +7,7 @@ breaks ties only and is discarded — with a warning — when it would violate a
 from __future__ import annotations
 
 from app.engine.bucketset import BucketSet
-from app.engine.dimensions import QUANTITATIVE_KEYS, Dimension, is_temporal
+from app.engine.dimensions import QUANTITATIVE_KEYS, Dimension, is_temporal, resolve
 from app.models.plan import AnalysisPlan, ChartType, Intent
 from app.models.request import Options
 from app.models.response import AggregationMode
@@ -66,10 +66,14 @@ def _primary(
         return ChartType.TIME_SERIES
 
     if plan.secondary_group_by is not None:
-        # Secondary's partition flag would be consulted once secondary aggregation exists;
-        # until then use the primary dim's flag as the conservative default (stacking a
-        # non-partition would invent a false whole).
-        if dim.partition:
+        # The **secondary** dimension decides, not the primary. Segments within one bar are
+        # secondary values, so they sum to their bar only when a study carries exactly one of
+        # them. Reading the primary's flag got both cases backwards: phase-by-status is
+        # stackable (one status per study) and was grouped, while status-by-phase is not (a
+        # study can be in two phases) and would have been stacked, implying a whole that does
+        # not exist.
+        secondary = resolve(plan.secondary_group_by.dimension)
+        if secondary.partition:
             return ChartType.STACKED_BAR_CHART
         return ChartType.GROUPED_BAR_CHART
 

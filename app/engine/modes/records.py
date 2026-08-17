@@ -135,6 +135,7 @@ def aggregate(
 
     buckets: list[Bucket] = []
     ordered_keys = _ordered_keys(counts, dim, ctx)
+    complete = len(ordered_keys) <= ctx.options.max_buckets
     if len(ordered_keys) > ctx.options.max_buckets:
         warnings.append(
             f"{dim.key} has {len(ordered_keys)} buckets; showing the first "
@@ -165,6 +166,7 @@ def aggregate(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
+        complete=complete,
         warnings=warnings,
     )
 

@@ -29,6 +29,14 @@ class BucketSet:
     mode: AggregationMode
     """Narrower than BUILD-PLAN §4's `str`: the three modes are a closed set, and reusing the
     response Literal means an unknown mode fails here rather than at serialization."""
+    complete: bool = True
+    """False when the bucket list was capped at `max_buckets` and labels were left out.
+
+    Coverage arithmetic depends on it: a partition whose buckets do not reconcile is a bug worth
+    warning about, but a partition showing 3 of 51,610 sponsors is *expected* not to reconcile,
+    and warning that the difference is "unexplained" points at the data when the explanation is
+    the caller's own `max_buckets`.
+    """
     sample_size: int | None = None
     sample_coverage: float | None = None
     warnings: list[str] = field(default_factory=list)

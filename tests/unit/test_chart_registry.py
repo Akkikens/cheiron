@@ -84,18 +84,32 @@ def test_comparison_with_two_series_is_grouped_bar() -> None:
     assert chosen is ChartType.GROUPED_BAR_CHART
 
 
-def test_secondary_on_partition_is_stacked() -> None:
-    plan = a_plan(secondary_group_by=GroupBy(dimension="study_type"))
-    chosen, _ = select_chart(plan, a_bucketset(4), REGISTRY["study_type"], Options())
+def test_a_single_valued_secondary_stacks() -> None:
+    """Segments are secondary values, so they sum to their bar when a study carries one of them.
+
+    Phase-by-status stacks even though *phase* is multi-valued: within one phase bar, every
+    study has exactly one status, so the segments do add up. The rule reads the secondary
+    dimension for exactly this reason.
+    """
+    plan = a_plan(
+        group_by=GroupBy(dimension="phase"),
+        secondary_group_by=GroupBy(dimension="overall_status"),
+    )
+    chosen, _ = select_chart(plan, a_bucketset(4), REGISTRY["phase"], Options())
     assert chosen is ChartType.STACKED_BAR_CHART
 
 
-def test_secondary_on_non_partition_is_grouped() -> None:
+def test_a_multi_valued_secondary_is_grouped_not_stacked() -> None:
+    """Status-by-phase must not stack: a study in two phases would appear in two segments.
+
+    Stacking it would imply the segments sum to the bar, which is the false whole SPEC §6.1's
+    safety rules exist to prevent.
+    """
     plan = a_plan(
-        group_by=GroupBy(dimension="phase"),
-        secondary_group_by=GroupBy(dimension="study_type"),
+        group_by=GroupBy(dimension="overall_status"),
+        secondary_group_by=GroupBy(dimension="phase"),
     )
-    chosen, _ = select_chart(plan, a_bucketset(4), REGISTRY["phase"], Options())
+    chosen, _ = select_chart(plan, a_bucketset(4), REGISTRY["overall_status"], Options())
     assert chosen is ChartType.GROUPED_BAR_CHART
 
 

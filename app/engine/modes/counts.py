@@ -61,6 +61,7 @@ async def run(
     warnings: list[str] = []
 
     max_buckets = ctx.options.max_buckets
+    complete = len(keys) <= max_buckets
     if len(keys) > max_buckets:
         warnings.append(
             f"{dim.key} has {len(keys)} buckets; showing the first {max_buckets} because "
@@ -146,6 +147,7 @@ async def run(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
+        complete=complete,
         warnings=warnings,
     )
 

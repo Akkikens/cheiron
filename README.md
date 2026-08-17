@@ -576,6 +576,13 @@ sweep every response: no bare `truncated` flag anywhere, `meta.coverage` fully p
 share field under overlapping semantics.
 
 ```bash
-uv run python scripts/record_fixtures.py    # re-record after an upstream refresh
+uv run python scripts/showcase.py           # all ten chart types, live, in one command
 uv run python scripts/verify_upstream.py    # reproduce every count in the notes
+uv run python scripts/record_fixtures.py    # re-record after an upstream refresh
 ```
+
+`showcase.py` exists because "supports ten chart types" is a claim a reviewer should be able to
+check rather than take on trust. It runs ten real queries against the live API and prints what
+came back; six go through the deterministic planner with no key, and the four needing intents
+the keyword matcher does not emit have their plan supplied through the same seam the tests use —
+labelled per row. It has already earned itself twice, catching two bugs no fixture reached.

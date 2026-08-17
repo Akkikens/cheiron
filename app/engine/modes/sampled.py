@@ -154,6 +154,8 @@ async def run(
         unclassified=unclassified,
         semantics="partition" if dim.partition else "overlapping",
         mode=MODE_NAME,
+        # Top-K by construction: complete only when every label the sample found was confirmed.
+        complete=len(buckets) + len(dropped) >= len(frequencies),
         sample_size=sample_size,
         sample_coverage=coverage,
         warnings=warnings,

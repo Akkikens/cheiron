@@ -374,3 +374,82 @@ async def test_a_histogram_is_ordered_by_bin_not_by_height(
     assert [row["enrollment_count"] for row in viz.data] == ["0-10", "11-50", "501-1,000"]
     assert viz.data[0]["bin_start"] == 0 and viz.data[0]["bin_end"] == 10
     assert viz.encoding["x"]["bin_start"] == "bin_start"
+
+
+# --- capped bucket lists are not "unexplained" ----------------------------------------------
+
+
+def test_a_capped_partition_is_not_reported_as_an_unexplained_difference() -> None:
+    """Showing 3 of 51,610 sponsors is expected not to reconcile — the cap is the explanation.
+
+    Warning that the difference is unexplained points at the data when it should point at
+    options.max_buckets, and it fired on a live query for exactly that reason.
+    """
+    capped = BucketSet(
+        buckets=[
+            Bucket(key=name, label=name, value=value, exactness="exact")
+            for name, value in (("A", 200), ("B", 120), ("C", 72))
+        ],
+        total=2_927,
+        unclassified=0,
+        semantics="partition",
+        # server_counts, because the response model rightly refuses a sampled mode with no
+        # sample_size — the cap being tested here is max_buckets, not sampling.
+        mode="server_counts",
+        complete=False,
+    )
+
+    coverage, warnings = build_coverage(capped, REGISTRY["lead_sponsor"])
+
+    assert not any("unexplained" in warning for warning in warnings)
+    assert coverage.overlap_note is not None
+    assert "options.max_buckets" in coverage.overlap_note
+    assert "2,927" in coverage.overlap_note
+
+
+def test_a_complete_partition_that_does_not_reconcile_still_warns() -> None:
+    """The bug this warning exists for has not been softened away."""
+    complete = BucketSet(
+        buckets=[
+            Bucket(key="INTERVENTIONAL", label="Interventional", value=1_800, exactness="exact")
+        ],
+        total=1_840,
+        unclassified=12,
+        semantics="partition",
+        mode="complete_records",
+        complete=True,
+    )
+
+    _, warnings = build_coverage(complete, REGISTRY["study_type"])
+
+    assert any("does not equal" in warning for warning in warnings)
+
+
+# --- stacking reads the secondary dimension --------------------------------------------------
+
+
+def test_stacking_is_decided_by_the_secondary_dimension() -> None:
+    """Reading the primary's flag got both directions backwards on live data."""
+    from app.render.registry import select_chart
+
+    def chart(primary: str, secondary: str) -> Any:
+        plan = AnalysisPlan(
+            intent=Intent.DISTRIBUTION,
+            filters=StudyFilter(),
+            group_by=GroupBy(dimension=primary),
+            secondary_group_by=GroupBy(dimension=secondary),
+            interpretation="Cross-tab of two dimensions.",
+        )
+        bucketset = BucketSet(
+            buckets=[Bucket(key="k", label="k", value=1, exactness="exact")],
+            total=1,
+            unclassified=0,
+            semantics="partition",
+            mode="complete_records",
+        )
+        return select_chart(plan, bucketset, REGISTRY[primary], Options())[0]
+
+    # One status per study, so phase-by-status segments genuinely sum to their bar.
+    assert chart("phase", "overall_status") is ChartType.STACKED_BAR_CHART
+    # A study can hold two phases, so status-by-phase segments do not.
+    assert chart("overall_status", "phase") is ChartType.GROUPED_BAR_CHART

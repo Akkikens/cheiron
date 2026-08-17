@@ -52,7 +52,13 @@ def build_coverage(
 
     if dim.partition:
         overlap_note = None
-        if memberships + bucketset.unclassified != bucketset.total:
+        if not bucketset.complete:
+            overlap_note = (
+                f"Showing {len(bucketset.buckets)} of the {dim.key} values present; the rest were "
+                f"cut by options.max_buckets. Each count shown is exact, and they are not "
+                f"expected to sum to the {bucketset.total:,} matching studies."
+            )
+        elif memberships + bucketset.unclassified != bucketset.total:
             warnings.append(
                 f"{dim.key} is a partition, so its buckets should sum to the total, but "
                 f"{memberships:,} bucket counts plus {bucketset.unclassified:,} unclassified "
