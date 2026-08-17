@@ -117,7 +117,12 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
         if bucketset.sample_size is not None:
             inspected += bucketset.sample_size
             sampled_any = True
-        elif bucketset.mode == "complete_records":
+        else:
+            # complete_records read every record; server_counts counted every study exactly on
+            # the server. Neither is a sample, so both belong in the numerator — counting a
+            # 200,000-study server_counts series as uninspected reported 0.2% coverage for a
+            # chart whose larger half is exact, which understates exactness as badly as
+            # overstating it misleads.
             inspected += bucketset.total
 
     return (

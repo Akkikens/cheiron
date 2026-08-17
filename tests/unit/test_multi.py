@@ -411,7 +411,9 @@ def test_a_mixed_mode_comparison_reports_the_least_exact_mode() -> None:
     merged, warnings = merge_panels([exact, sampled], PHASE)
 
     assert merged.mode == "sampled_then_confirmed"
-    assert merged.sample_size == 3_000
+    # 3,000 sampled + the 10 the exact series accounted for: an exactly counted study is not an
+    # uninspected one, and excluding it understated exactness as badly as inflating it misleads.
+    assert merged.sample_size == 3_010
     assert any("different aggregation modes" in warning for warning in warnings)
 
 
@@ -532,16 +534,53 @@ def test_a_record_mode_series_counts_as_fully_inspected() -> None:
     assert merged.sample_coverage == round(1_000 / 10_000, 3)
 
 
-async def test_a_truncated_comparison_is_not_reported_as_complete(
+async def test_coverage_describes_the_chart_that_was_drawn(
     settings: Settings, vocab: Vocabulary
 ) -> None:
-    """Coverage is built from the merged set, which still holds every key."""
-    from app.render.encode import dropped_axis_keys
+    """Marking a truncated result incomplete was not enough on its own.
+
+    The merged set still held every key, so the note said "showing 10" for a chart drawing 3 and
+    bucket_sum totalled bars nobody could see. Coverage now runs on the narrowed set.
+    """
+    from app.engine.coverage import build_coverage
+    from app.render.encode import plotted_axis_keys
 
     panels = [
         a_panel("A", {f"K{i:02d}": 100 - i for i in range(10)}, total=1_000),
         a_panel("B", {f"K{i:02d}": 50 - i for i in range(10)}, total=500),
     ]
+    merged, _ = merge_panels(panels, REGISTRY["lead_sponsor"])
 
-    assert dropped_axis_keys(panels, 3) == 7
-    assert dropped_axis_keys(panels, 20) == 0
+    plotted = merged.plotted_only(plotted_axis_keys(panels, 3))
+    coverage, _ = build_coverage(plotted, REGISTRY["lead_sponsor"])
+
+    assert len(plotted.buckets) == 3
+    assert plotted.omitted_buckets == 7
+    assert coverage.bucket_sum == plotted.bucket_sum  # only what is drawn
+    assert "Showing 3 of 10 lead_sponsor values" in (coverage.overlap_note or "")
+
+    untouched = merged.plotted_only(plotted_axis_keys(panels, 20))
+    assert untouched.omitted_buckets == 0
+    assert untouched.complete
+
+
+async def test_a_truncated_overlapping_dimension_also_discloses_the_cut(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """`complete` was read only in the partition branch.
+
+    So a truncated comparison on phase, condition or country disclosed the cut nowhere in
+    meta.coverage — the branch that fires for every multi-valued dimension ignored it.
+    """
+    from app.engine.coverage import build_coverage
+    from app.render.encode import plotted_axis_keys
+
+    panels = [a_panel("A", {f"K{i:02d}": 100 - i for i in range(10)}, total=1_000)]
+    merged, _ = merge_panels(panels, PHASE)
+
+    plotted = merged.plotted_only(plotted_axis_keys(panels, 4))
+    coverage, _ = build_coverage(plotted, PHASE)
+
+    assert coverage.groupby_semantics == "overlapping"
+    assert "Showing 4 of 10 phase values" in (coverage.overlap_note or "")
+    assert "multi-valued" in (coverage.overlap_note or "")  # the overlap note is still there

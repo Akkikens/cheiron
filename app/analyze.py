@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -58,8 +57,8 @@ from app.planner.heuristic import HeuristicPlanner
 from app.planner.llm import ChatCompleter, LLMPlanner
 from app.planner.validate import enforce_hard_constraints, validate_plan
 from app.render.encode import (
-    dropped_axis_keys,
-    dropped_crosstab_keys,
+    plotted_axis_keys,
+    plotted_crosstab_keys,
     render,
     render_crosstab,
     render_panels,
@@ -188,14 +187,15 @@ async def analyze(
     except BudgetExhausted as exc:
         raise budget_error(exc) from exc
 
-    # The chart may plot fewer categories than the bucket set holds (max_buckets on a shared
-    # axis), and coverage is built from the bucket set — so tell it when the picture is partial.
-    truncated_axis = panels is not None and dropped_axis_keys(panels, request.options.max_buckets)
-    truncated_cells = cells is not None and dropped_crosstab_keys(
-        cells, request.options.max_buckets
-    )
-    if truncated_axis or truncated_cells:
-        bucketset = replace(bucketset, complete=False)
+    # A comparison or cross-tab caps its shared axis, so the bucket set holds categories the
+    # chart will not draw. Coverage is built from that set, so narrow it first: otherwise
+    # bucket_sum totals bars nobody can see and the note counts categories nobody was shown.
+    if panels is not None:
+        bucketset = bucketset.plotted_only(plotted_axis_keys(panels, request.options.max_buckets))
+    elif cells is not None:
+        bucketset = bucketset.plotted_only(
+            plotted_crosstab_keys(cells, request.options.max_buckets)
+        )
 
     coverage, coverage_warnings = build_coverage(
         bucketset, dim, counts_studies=plan.metric is Metric.STUDY_COUNT

@@ -183,13 +183,15 @@ class CTGTransport:
         self._sleep = sleep
         self._rng = rng or random.Random()
         self._attempts = attempts
-        # How long a `Retry-After` may actually be slept for. Derived from the request budget
-        # rather than fixed, because the point of the ceiling is to stay *inside* that budget:
-        # a flat 30s was three times the 10s default and would have blown it on one attempt,
-        # across `attempts` retries. Half the budget leaves room to fail as upstream_timeout
-        # instead of hanging. The value reported to the caller is upstream's real one, uncapped
-        # — clamping that would have a well-behaved client retry too early and be limited again.
-        self._max_retry_sleep_s = max(1.0, settings.request_budget_ms / 1000 / 2)
+        # How long a `Retry-After` may actually be slept for, per attempt. Divided by the
+        # attempt count rather than halved: a `get()` sleeps between every attempt, so "half the
+        # budget" still added up to the whole budget across two retries — the same mistake as
+        # the flat 30s ceiling it replaced, one step smaller. No floor, either: flooring at 1s
+        # exceeded the budget outright when REQUEST_BUDGET_MS was configured below 2000.
+        #
+        # The value *reported* to the caller stays upstream's own, uncapped: clamping that would
+        # have a well-behaved client retry too early and be rate limited again.
+        self._max_retry_sleep_s = settings.request_budget_ms / 1000 / max(attempts, 1)
         self._revalidated: dict[str, tuple[str, Any]] = {}
 
     async def __aenter__(self) -> Self:

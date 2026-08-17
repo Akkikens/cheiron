@@ -579,3 +579,43 @@ async def test_a_histogram_never_produces_an_other_bar(
     assert all(row["bin_end"] is not None for row in viz.data)
     # The axis is ordinal: `field` holds a bin label, and the numbers live in the edges.
     assert viz.encoding["x"]["type"] == "ordinal"
+
+
+# --- fourth review pass ------------------------------------------------------------------------
+
+
+def test_a_keyword_must_not_continue_into_another_dimension() -> None:
+    """Twice now a broad enrollment phrasing has stolen a phase question.
+
+    "how many participants" did it, was removed, and "how many patients" did exactly the same
+    thing on the next pass. Only phrasings that cannot continue into another dimension qualify.
+    """
+    from app.planner.heuristic import match
+
+    assert match("How many patients are enrolled in each phase?").key == "phase"
+    assert match("How many participants are enrolled in each phase?").key == "phase"
+    assert match("How many patients are in these trials?").key == "enrollment"
+    assert match("How big are these trials?").key == "enrollment"
+
+
+async def test_retry_sleeps_stay_inside_the_budget_across_every_attempt(
+    settings: Settings,
+) -> None:
+    """Halving the budget still spent all of it: a get() sleeps between every attempt."""
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    client = CTGClient(
+        stub_transport(
+            settings,
+            lambda _r: httpx.Response(429, text="slow", headers={"Retry-After": "3600"}),
+            sleep=record,
+        )
+    )
+
+    with pytest.raises(CheironError):
+        await client.count({"query.cond": "cancer"})
+
+    assert sum(slept) <= settings.request_budget_ms / 1000

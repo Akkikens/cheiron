@@ -53,11 +53,7 @@ def build_coverage(
     if dim.partition:
         overlap_note = None
         if not bucketset.complete:
-            overlap_note = (
-                f"Showing {len(bucketset.buckets)} of the {dim.key} values present; the rest were "
-                f"cut by options.max_buckets. Each count shown is exact, and they are not "
-                f"expected to sum to the {bucketset.total:,} matching studies."
-            )
+            overlap_note = _truncation_note(bucketset, dim)
         elif memberships + bucketset.unclassified != bucketset.total:
             warnings.append(
                 f"{dim.key} is a partition, so its buckets should sum to the total, but "
@@ -67,6 +63,10 @@ def build_coverage(
             )
     else:
         overlap_note = _overlap_note(dim, bucketset, memberships=memberships, with_value=with_value)
+        if not bucketset.complete:
+            # A multi-valued dimension takes this branch, so without this a truncated chart on
+            # phase or condition disclosed the cut nowhere in `meta.coverage` at all.
+            overlap_note = f"{overlap_note} {_truncation_note(bucketset, dim)}"
 
     return (
         Coverage(
@@ -79,6 +79,21 @@ def build_coverage(
             sample_coverage=bucketset.sample_coverage,
         ),
         warnings,
+    )
+
+
+def _truncation_note(bucketset: BucketSet, dim: Dimension) -> str:
+    """States what the chart draws against what the result held, in real numbers.
+
+    `bucket_sum` here covers only the plotted categories, because the bucket set was narrowed
+    before coverage was built — a sum over bars nobody can see is not a disclosure.
+    """
+    shown = len(bucketset.buckets)
+    present = shown + bucketset.omitted_buckets
+    return (
+        f"Showing {shown:,} of {present:,} {dim.key} values, the rest cut by "
+        f"options.max_buckets; bucket_sum covers only the {shown:,} plotted. Each count shown is "
+        f"exact and they are not expected to sum to the {bucketset.total:,} matching studies."
     )
 
 
