@@ -250,28 +250,28 @@
 
     <div class="examples">
       <p class="eyebrow">Try one</p>
-      <button data-q="How many trials by phase?" data-drug="Pembrolizumab">
+      <button data-q="How many trials by phase?" data-drug="Keytruda">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor"><rect x="1" y="8" width="3" height="5"/><rect x="5.5" y="3" width="3" height="10"/><rect x="10" y="6" width="3" height="7"/></g></svg>
         Trials by phase</button>
-      <button data-q="How has this changed over time?" data-drug="Pembrolizumab" data-sy="2019" data-ey="2025">
+      <button data-q="How has this changed over time?" data-drug="Keytruda" data-sy="2019" data-ey="2025">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><polyline points="1,11 4.5,7 8,9 13,2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
         Trend over time</button>
-      <button data-q="What is the recruitment status?" data-drug="Pembrolizumab">
+      <button data-q="What is the recruitment status?" data-drug="Keytruda">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor"><rect x="1" y="2" width="11" height="2.4"/><rect x="1" y="5.8" width="7" height="2.4"/><rect x="1" y="9.6" width="4" height="2.4"/></g></svg>
         Recruitment status</button>
-      <button data-q="Which countries run these trials?" data-cond="glioblastoma">
+      <button data-q="Which countries run these trials?" data-cond="diabetes">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M1.4 7h11.2M7 1.4c2.6 2.8 2.6 8.4 0 11.2M7 1.4c-2.6 2.8-2.6 8.4 0 11.2" fill="none" stroke="currentColor" stroke-width="1"/></svg>
         Countries</button>
-      <button data-q="How big are these trials?" data-cond="glioblastoma" data-sy="2024" data-ey="2025">
+      <button data-q="How big are these trials?" data-cond="migraine">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor"><rect x="1" y="9" width="2.6" height="4"/><rect x="4" y="4" width="2.6" height="9"/><rect x="7" y="6.5" width="2.6" height="6.5"/><rect x="10" y="10.5" width="2.6" height="2.5"/></g></svg>
         Enrollment sizes</button>
-      <button data-q="Which interventions are studied together?" data-cond="glioblastoma" data-sy="2024" data-ey="2025">
+      <button data-q="Which interventions are studied together?" data-cond="migraine">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g stroke="currentColor" stroke-width="1" fill="none"><path d="M3 3.5L11 7M11 7L4 11"/></g><g fill="currentColor"><circle cx="3" cy="3.5" r="1.9"/><circle cx="11.2" cy="7" r="1.6"/><circle cx="4" cy="11" r="1.5"/></g></svg>
         Co-occurrence network</button>
-      <button data-q="Are glioblastoma trials mostly run by industry or by universities?" data-cond="glioblastoma" data-needs-llm="1">
+      <button data-q="Are diabetes trials mostly run by companies or by universities?" data-cond="diabetes" data-needs-llm="1">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><text x="7" y="11" text-anchor="middle" font-size="11" font-family="var(--serif)" fill="currentColor">AI</text></svg>
         Free-form question <span style="color:var(--muted)">→ llm</span></button>
-      <button data-q="Tell me a joke about trials" data-needs-llm="1">
+      <button data-q="How many people are enrolled in diabetes trials?" data-cond="diabetes" data-refuses="1">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v4M7 9.8v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         A question it refuses</button>
     </div>
@@ -453,7 +453,12 @@ function timeSeries(viz) {
 
 function histogram(viz) {
   const enc = viz.encoding, rows = viz.data, yf = enc.y.field;
-  const W = 860, H = 320, padL = 62, padR = 24, padT = 14, padB = 42;
+  // padT has to clear the value label on the tallest bar. That bar is exactly `ih` high, so its
+  // label sits at padT - 7: with the old padT of 14 the label was drawn at y=7 and the top of the
+  // digits fell outside the viewBox, so the biggest number in the chart was the one you could not
+  // read. Printing it inside the bar instead is not an option here, because the colour ramp runs
+  // by bin index rather than by height and the tall bar is often a pale one.
+  const W = 860, H = 334, padL = 62, padR = 24, padT = 28, padB = 42;
   const iw = W - padL - padR, ih = H - padT - padB;
   const max = Math.max(1, ...rows.map((r) => +r[yf] || 0));
   const bw = iw / Math.max(rows.length, 1);
@@ -755,8 +760,10 @@ $('go').addEventListener('click', run);
 // question only the model can plan. The position is kept in sessionStorage so it advances per
 // tab and resets when the tab is closed, rather than being random and repeating itself.
 //
-// When the deployment runs without a model, skip the LLM-only and refuse examples so first
-// paint is a chart rather than unplannable_query.
+// Two examples are excluded from that rotation. The refusal is one of them: it is a good thing to
+// show on purpose and a bad thing to land on, because a visitor who arrives at `unplannable_query`
+// reads it as a broken page. The LLM-only example is skipped when the deployment runs without a
+// model, for the same reason.
 async function openingExample() {
   const buttons = [...document.querySelectorAll('.examples button')].filter((b) => b.dataset.q);
   if (!buttons.length) return null;
@@ -765,7 +772,8 @@ async function openingExample() {
     const health = await fetch('/health').then((r) => r.json());
     llmOn = health.llm_enabled !== false;
   } catch (_) { /* keep all examples if health is unreachable */ }
-  const pool = llmOn ? buttons : buttons.filter((b) => !b.dataset.needsLlm);
+  const openable = buttons.filter((b) => !b.dataset.refuses);
+  const pool = llmOn ? openable : openable.filter((b) => !b.dataset.needsLlm);
   if (!pool.length) return buttons[0];
   const key = 'cheiron:opening';
   const seen = Number(sessionStorage.getItem(key) || '-1');
