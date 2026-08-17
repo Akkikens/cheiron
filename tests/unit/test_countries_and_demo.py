@@ -175,3 +175,105 @@ def test_the_demo_reads_the_spec_rather_than_hardcoding_questions() -> None:
     assert "encoding" in renderer_body
     for leak in ("pembrolizumab", "glioblastoma", "phase ===", "'phase'"):
         assert leak not in renderer_body.lower()
+
+
+# --- scatter selection and rendering ----------------------------------------------------------
+
+
+def scatter_plan() -> AnalysisPlan:
+    return AnalysisPlan(
+        intent=Intent.SCATTER,
+        filters=StudyFilter(condition="glioblastoma"),
+        group_by=GroupBy(dimension="enrollment_count"),
+        interpretation="Enrollment against start date for glioblastoma trials.",
+    )
+
+
+def a_study(nct: str, year: str | None, enrollment: int | None) -> dict[str, Any]:
+    status: dict[str, Any] = {} if year is None else {"startDateStruct": {"date": year}}
+    design: dict[str, Any] = {} if enrollment is None else {"enrollmentInfo": {"count": enrollment}}
+    return {
+        "protocolSection": {
+            "identificationModule": {"nctId": nct},
+            "statusModule": status,
+            "designModule": design,
+        }
+    }
+
+
+def a_scatter_bucketset(mode: str) -> BucketSet:
+    return BucketSet(
+        buckets=[Bucket(key="11-50", label="11-50", value=3, exactness="exact")],
+        total=3,
+        unclassified=0,
+        semantics="partition",
+        mode=mode,  # type: ignore[arg-type]
+    )
+
+
+def test_scatter_needs_the_records_and_downgrades_without_them() -> None:
+    """Same rule as network_graph: plotting bin midpoints as studies would invent data."""
+    from app.render.registry import select_chart
+
+    in_record_mode, _ = select_chart(
+        scatter_plan(),
+        a_scatter_bucketset("complete_records"),
+        REGISTRY["enrollment_count"],
+        Options(),
+    )
+    above, warnings = select_chart(
+        scatter_plan(),
+        a_scatter_bucketset("server_counts"),
+        REGISTRY["enrollment_count"],
+        Options(),
+    )
+
+    assert in_record_mode is ChartType.SCATTER_PLOT
+    assert above is ChartType.HISTOGRAM
+    assert any("one point per study" in w for w in warnings)
+
+
+async def test_scatter_excludes_studies_missing_an_axis_and_counts_them(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """Plotting a study with no enrollment at zero manufactures a cluster that is not there."""
+    from app.render.encode import render_scatter
+
+    ctx = await a_ctx(settings, vocab)
+    studies = [
+        a_study("NCT1", "2024-03", 40),
+        a_study("NCT2", "2024", 640),
+        a_study("NCT3", None, 100),  # no start date
+        a_study("NCT4", "2025-01-01", None),  # no enrollment
+    ]
+
+    viz, _ = render_scatter(
+        scatter_plan(),
+        studies,
+        a_scatter_bucketset("complete_records"),
+        REGISTRY["enrollment_count"],
+        ctx,
+    )
+
+    assert [point["nct_id"] for point in viz.data] == ["NCT1", "NCT2"]
+    annotation = next(a for a in (viz.annotations or []) if a["type"] == "points")
+    assert annotation["plotted"] == 2
+    assert annotation["excluded"] == 2
+    assert "excluded rather than plotted at zero" in annotation["text"]
+    assert viz.data[0]["url"].endswith("NCT1")
+
+
+async def test_scatter_titles_name_both_axes(settings: Settings, vocab: Vocabulary) -> None:
+    from app.render.encode import render_scatter
+
+    ctx = await a_ctx(settings, vocab)
+    viz, _ = render_scatter(
+        scatter_plan(),
+        [a_study("NCT1", "2024", 40)],
+        a_scatter_bucketset("complete_records"),
+        REGISTRY["enrollment_count"],
+        ctx,
+    )
+
+    assert viz.title == "Glioblastoma Trials: enrollment by start year"
+    assert "by Enrollment:" not in viz.title  # the awkward double-naming this replaced

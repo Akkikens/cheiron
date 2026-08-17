@@ -518,6 +518,8 @@ build narrative and each message records the reasoning behind that step.
   the cap is raised; the fail-all test to fail when a partial result is returned; the
   timestamp-recheck test to fail when it reads a cached value instead of a live one. A green test
   that cannot fail is worse than no test.
+- **94% line coverage**, though the number is the weakest signal here: several of the defects
+  below were found in fully covered code, by running it rather than by testing it.
 - **A late review pass found nine defects** the spec-derived tests could not see, including one
   that returned a fabricated comparison chart. Each is now pinned by a regression test in
   `tests/unit/test_review_fixes.py`. They are listed there rather than quietly fixed, because
@@ -559,7 +561,8 @@ particular changed real behaviour rather than style.
 ## 10. Tests
 
 ```bash
-uv run pytest -q          # unit + acceptance, no network
+uv run pytest -q                              # unit + acceptance, no network
+uv run pytest --cov=app --cov-report=term     # 94% line coverage
 uv run ruff check . && uv run ruff format --check . && uv run mypy app
 ```
 
