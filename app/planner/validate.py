@@ -158,6 +158,20 @@ def _check_coherence(plan: AnalysisPlan) -> list[str]:
                 f"change the intent to 'distribution'."
             )
 
+    if len(plan.series) == 1:
+        errors.append(
+            "series has exactly 1 entry; a single series is not a comparison and its filters "
+            "would never be applied. Use 2-4 series, or move the filters into `filters` and "
+            "drop `series`."
+        )
+
+    if len(plan.series) > 1 and plan.secondary_group_by is not None:
+        errors.append(
+            "series and secondary_group_by are both set; a grouped bar chart has one breakdown "
+            "channel and cannot show two. Drop secondary_group_by, or drop series and ask for "
+            "the cross-tab alone."
+        )
+
     # `scatter` deliberately does NOT require secondary_group_by. It plots one point per study
     # with enrollment against start date, so the second axis is a property of the chart rather
     # than a choice the plan makes — demanding a field the renderer ignores would invite a

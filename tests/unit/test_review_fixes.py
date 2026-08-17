@@ -26,7 +26,15 @@ from app.engine.dimensions import REGISTRY
 from app.engine.modes import network
 from app.engine.preflight import select_mode
 from app.errors import CheironError, ErrorCode
-from app.models.plan import AnalysisPlan, ChartType, GroupBy, Intent, Metric, StudyFilter
+from app.models.plan import (
+    AnalysisPlan,
+    ChartType,
+    GroupBy,
+    Intent,
+    Metric,
+    SeriesSpec,
+    StudyFilter,
+)
 from app.models.request import Options
 from app.render.encode import render
 from tests.conftest import Handler, stub_transport
@@ -453,3 +461,93 @@ def test_stacking_is_decided_by_the_secondary_dimension() -> None:
     assert chart("phase", "overall_status") is ChartType.STACKED_BAR_CHART
     # A study can hold two phases, so status-by-phase segments do not.
     assert chart("overall_status", "phase") is ChartType.GROUPED_BAR_CHART
+
+
+# --- second review pass: plan coherence, transport, histogram bins ---------------------------
+
+
+async def test_a_lone_series_is_refused_rather_than_ignored(vocab: Vocabulary) -> None:
+    """A one-element series took the single-series path, where its filters were never read."""
+    from app.planner.validate import validate_plan
+
+    plan = AnalysisPlan(
+        intent=Intent.DISTRIBUTION,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="phase"),
+        series=[],
+        interpretation="Distribution across phases.",
+    )
+    lone = plan.model_copy(update={"series": [SeriesSpec(label="A", filters=StudyFilter())]})
+
+    assert validate_plan(plan, vocab) == []
+    messages = validate_plan(lone, vocab)
+    assert any("single series is not a comparison" in message for message in messages)
+
+
+async def test_series_and_secondary_together_are_refused(vocab: Vocabulary) -> None:
+    """A grouped bar has one breakdown channel; the secondary was silently dropped."""
+    from app.planner.validate import validate_plan
+
+    plan = AnalysisPlan(
+        intent=Intent.COMPARISON,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="phase"),
+        secondary_group_by=GroupBy(dimension="overall_status"),
+        series=[
+            SeriesSpec(label="A", filters=StudyFilter()),
+            SeriesSpec(label="B", filters=StudyFilter()),
+        ],
+        interpretation="Comparison across two sponsors.",
+    )
+
+    messages = validate_plan(plan, vocab)
+
+    assert any("cannot show two" in message for message in messages)
+
+
+def test_retry_after_is_capped_and_survives_a_malformed_header() -> None:
+    """An hour-long Retry-After would blow the request budget from outside RunContext."""
+    from app.ctg.client import MAX_RETRY_AFTER_S, _retry_after_seconds
+
+    def header(value: str) -> Any:
+        return httpx.Response(429, headers={"Retry-After": value})
+
+    assert _retry_after_seconds(header("7")) == 7
+    assert _retry_after_seconds(header("3600")) == MAX_RETRY_AFTER_S
+    assert _retry_after_seconds(header("inf")) is None  # int(float("inf")) used to raise
+    assert _retry_after_seconds(header("nan")) is None
+    assert _retry_after_seconds(header("Wed, 21 Oct 2026 07:28:00 GMT")) is None
+
+
+async def test_a_histogram_never_produces_an_other_bar(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """`_bin_edges("OTHER")` returned [0, inf) — a full-width bar overlapping every real one."""
+    ctx = await a_ctx(settings, vocab)
+    ctx.options = Options(include_citations=False, max_buckets=3)
+    buckets = [
+        Bucket(key=key, label=key, value=value, exactness="exact")
+        for key, value in (
+            ("0-10", 31),
+            ("11-50", 107),
+            ("51-100", 38),
+            ("101-500", 45),
+            ("501-1,000", 7),
+        )
+    ]
+    bucketset = BucketSet(
+        buckets=buckets, total=228, unclassified=0, semantics="partition", mode="complete_records"
+    )
+    plan = AnalysisPlan(
+        intent=Intent.HISTOGRAM,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="enrollment_count"),
+        interpretation="Distribution by enrollment size.",
+    )
+
+    viz, _ = render(plan, bucketset, ChartType.HISTOGRAM, REGISTRY["enrollment_count"], ctx)
+
+    assert "OTHER" not in {row["enrollment_count"] for row in viz.data}
+    assert all(row["bin_end"] is not None for row in viz.data)
+    # The axis is ordinal: `field` holds a bin label, and the numbers live in the edges.
+    assert viz.encoding["x"]["type"] == "ordinal"

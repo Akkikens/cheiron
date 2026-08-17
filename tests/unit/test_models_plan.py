@@ -148,12 +148,25 @@ def test_a_valid_hint_is_kept() -> None:
 # --- normalized_key (SPEC §7) -------------------------------------------------------------
 
 
-def test_key_ignores_interpretation_and_viz_hint() -> None:
-    """Neither changes which numbers come back."""
-    first = a_plan(interpretation="One phrasing.", viz_hint="bar_chart")
-    second = a_plan(interpretation="A completely different phrasing.", viz_hint="table")
+def test_key_ignores_interpretation() -> None:
+    """Prose changes no number, so a rephrasing is the same cached result."""
+    first = a_plan(interpretation="One phrasing.")
+    second = a_plan(interpretation="A completely different phrasing.")
 
     assert first.normalized_key() == second.normalized_key()
+
+
+def test_key_includes_viz_hint_because_it_can_change_the_chart() -> None:
+    """Advisory is not the same as inert.
+
+    The registry consults `viz_hint` to break ties (bar/table/kpi, grouped/stacked), so two
+    requests differing only in the hint can legitimately get different chart types. Sharing a
+    cache entry would serve the first caller's chart to the second.
+    """
+    as_bar = a_plan(viz_hint="bar_chart")
+    as_table = a_plan(viz_hint="table")
+
+    assert as_bar.normalized_key() != as_table.normalized_key()
 
 
 def test_key_ignores_discarded_viz_hint() -> None:
@@ -163,6 +176,8 @@ def test_key_ignores_discarded_viz_hint() -> None:
 
     assert with_discard.discarded_viz_hint == "pie_chart"
     assert without.discarded_viz_hint is None
+    # An unrenderable hint is discarded before it reaches the registry, so unlike a live hint it
+    # cannot change the chart — and must not split the cache.
     assert with_discard.normalized_key() == without.normalized_key()
 
 

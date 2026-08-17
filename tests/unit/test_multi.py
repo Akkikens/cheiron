@@ -343,3 +343,125 @@ def test_series_spec_shape_is_what_the_engine_consumes() -> None:
 
     assert spec.label == "Merck"
     assert spec.filters.sponsor == "Merck Sharp & Dohme LLC"
+
+
+# --- second review pass: fabrication, silent drops, and caps ---------------------------------
+
+
+async def test_a_comparison_of_enrollment_is_refused_not_answered_with_study_counts(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """The worst bug of the second review: study counts shipped labelled "participants".
+
+    The single-series path guards enrollment metrics after preflight; a comparison has one
+    preflight per series, so without a guard the counts fan-out returned study counts that
+    encode then labelled "Total enrollment" with unit "participants".
+    """
+    from app.analyze import analyze
+    from app.ctg.vocab import VocabularyCache
+    from app.errors import CheironError, ErrorCode
+    from app.models.plan import Metric
+    from app.models.request import AnalyzeRequest
+
+    upstream = a1_upstream()
+    plan_payload = a_plan(
+        intent=Intent.COMPARISON,
+        metric=Metric.ENROLLMENT_SUM,
+        series=[
+            SeriesSpec(label="A", filters=StudyFilter(sponsor="A")),
+            SeriesSpec(label="B", filters=StudyFilter(sponsor="B")),
+        ],
+    )
+
+    async def completer(messages: Any, schema: Any) -> str:
+        import json
+
+        return json.dumps(plan_payload.model_dump(mode="json"))
+
+    with pytest.raises(CheironError) as caught:
+        await analyze(
+            AnalyzeRequest(query="compare enrollment by sponsor"),
+            transport=stub_transport(settings, upstream.async_handler),
+            vocabulary_cache=VocabularyCache(),
+            settings=settings.model_copy(update={"llm_enabled": True, "openai_api_key": "sk-test"}),
+            completer=completer,
+        )
+
+    assert caught.value.code is ErrorCode.UNPLANNABLE_QUERY
+    assert "enrollment" in caught.value.message.lower()
+
+
+def test_a_mixed_mode_comparison_reports_the_least_exact_mode() -> None:
+    """Series pick their own mode, so claiming the first one's misstates half the bars."""
+    exact = a_panel("Small", {"PHASE2": 10}, total=10)
+    sampled = Panel(
+        label="Large",
+        bucketset=BucketSet(
+            buckets=[Bucket(key="PHASE2", label="PHASE2", value=900, exactness="exact")],
+            total=90_000,
+            unclassified=0,
+            semantics="overlapping",
+            mode="sampled_then_confirmed",
+            sample_size=3_000,
+            sample_coverage=0.033,
+        ),
+    )
+    exact = Panel(label="Small", bucketset=exact.bucketset)
+
+    merged, warnings = merge_panels([exact, sampled], PHASE)
+
+    assert merged.mode == "sampled_then_confirmed"
+    assert merged.sample_size == 3_000
+    assert any("different aggregation modes" in warning for warning in warnings)
+
+
+async def test_a_comparison_respects_max_buckets_across_series(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """N series share one axis, so the cap applies to the union of their keys."""
+    from app.models.request import Options
+
+    panels = [
+        a_panel("A", {f"K{i:02d}": 100 - i for i in range(10)}, total=1_000),
+        a_panel("B", {f"K{i:02d}": 50 - i for i in range(10)}, total=500),
+    ]
+    merged, _ = merge_panels(panels, PHASE)
+    ctx = await a_ctx(settings, vocab, a1_upstream())
+    ctx.options = Options(include_citations=False, max_buckets=3)
+
+    viz, _ = render_panels(a_plan(intent=Intent.COMPARISON), panels, merged, PHASE, ctx)
+
+    assert {row["phase"] for row in viz.data} == {"K00", "K01", "K02"}
+    assert len(viz.data) == 6  # three categories, both series each
+    rollup = next(a for a in (viz.annotations or []) if a["type"] == "rollup")
+    assert rollup["rolled_categories"] == 7
+
+
+async def test_a_crosstab_respects_max_buckets(settings: Settings, vocab: Vocabulary) -> None:
+    from app.models.plan import ChartType
+    from app.models.request import Options
+
+    ctx = await a_ctx(settings, vocab, a1_upstream())
+    ctx.options = Options(include_citations=False, max_buckets=2)
+    cells = [CrossCell(primary=f"P{i}", secondary="RECRUITING", value=100 - i) for i in range(6)]
+    bucketset = BucketSet(
+        buckets=[Bucket(key="P0", label="P0", value=100, exactness="exact")],
+        total=600,
+        unclassified=0,
+        semantics="partition",
+        mode="complete_records",
+    )
+
+    viz, _ = render_crosstab(
+        a_plan(secondary_group_by=GroupBy(dimension="overall_status")),
+        cells,
+        bucketset,
+        PHASE,
+        STATUS,
+        ctx,
+        ChartType.STACKED_BAR_CHART,
+    )
+
+    assert {row["phase"] for row in viz.data} == {"P0", "P1"}
+    rollup = next(a for a in (viz.annotations or []) if a["type"] == "rollup")
+    assert rollup["rolled_categories"] == 4

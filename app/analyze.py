@@ -128,6 +128,14 @@ async def analyze(
         if len(plan.series) > MAX_SERIES:
             raise too_many_series(len(plan.series))
 
+        if plan.metric is not Metric.STUDY_COUNT and len(plan.series) > 1:
+            # The single-series path guards this after preflight; a comparison has one preflight
+            # per series, so without a guard here the counts fan-out returns *study counts* that
+            # are then labelled "Total enrollment" with unit "participants". Refuse up front:
+            # a comparison of enrollment needs every series inside record mode, which cannot be
+            # known before spending N preflights.
+            raise records.enrollment_unplannable(0, settings.record_mode_threshold)
+
         if len(plan.series) > 1:
             # A comparison is N independent analyses. Each series gets its own preflight, mode
             # selection, and fan-out, because each has its own filters and therefore its own

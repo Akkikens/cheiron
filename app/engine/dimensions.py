@@ -191,19 +191,6 @@ def bin_label(low: int, high: int | None) -> str:
     return f"{low:,}+" if high is None else f"{low:,}-{high:,}"
 
 
-"""Dimensions whose buckets are numeric ranges rather than categories.
-
-Empty on purpose: SPEC §5.1's ten rows are closed enums, open vocabularies, and one derived
-date range, so there is no quantitative dimension to group by. `EnrollmentCount` would be the
-obvious first one.
-
-This is not trivia — SPEC §6.1's `histogram` and `scatter_plot` rows both require a
-quantitative dimension, so both chart types are unreachable while this set is empty. The
-planner refuses those intents by consulting this set rather than hardcoding the refusal, so
-adding a row here makes them live instead of leaving a contradiction to find later.
-"""
-
-
 def resolve(key: str) -> Dimension:
     try:
         return REGISTRY[key]

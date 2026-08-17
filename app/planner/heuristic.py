@@ -7,7 +7,20 @@ key present at all.
 **Precedence is observable behaviour, so it is fixed and documented.** Templates are tried in
 the order below and the first keyword hit wins:
 
-1. phase 2. status 3. year 4. country 5. sponsor
+1. network 2. enrollment 3. sponsor_class 4. intervention_type 5. study_type 6. condition
+7. phase 8. status 9. year 10. country 11. sponsor
+
+The six specific templates sit first, but "specific" has to mean *specific*: a keyword broad
+enough to appear in a question about something else shadows the template that question wanted.
+"participants" did that to phase ("how many participants in each phase"), "industry" to year
+("how has industry funding changed over time"), and "observational" and "diseases" to country
+("which countries run observational studies", "which countries study rare diseases"). Each is
+now phrased so it cannot match a question aimed elsewhere.
+
+"How many participants are enrolled in each phase?" names two dimensions and is the case a
+keyword matcher cannot resolve, so "how many participants" is deliberately *not* a keyword: it
+routes to `phase`, which is at least one of the two things asked. Disambiguating a question that
+names two dimensions is what the LLM planner is for.
 
 The consequence worth knowing before you file it as a bug: *"trials by phase over time"* hits
 `phase` first and returns a phase distribution, not a trend. That is the honest behaviour of a
@@ -66,12 +79,12 @@ TEMPLATES: Final[tuple[Template, ...]] = (
         keywords=(
             "how big",
             "how large",
-            "enrollment",
-            "enrolment",
-            "participants",
-            "how many patients",
+            "enrollment size",
+            "enrolment size",
             "sample size",
             "trial size",
+            "typical enrollment",
+            "typical enrolment",
         ),
         intent=Intent.HISTOGRAM,
         dimension="enrollment_count",
@@ -80,7 +93,14 @@ TEMPLATES: Final[tuple[Template, ...]] = (
     ),
     Template(
         key="sponsor_class",
-        keywords=("industry", "who funds", "funded by", "academic", "sponsor type", "nih"),
+        keywords=(
+            "industry funded",
+            "industry-funded",
+            "industry or academic",
+            "who funds",
+            "sponsor type",
+            "sponsor class",
+        ),
         intent=Intent.DISTRIBUTION,
         dimension="sponsor_class",
         phrasing="Distribution of {subject} by sponsor class",
@@ -104,7 +124,12 @@ TEMPLATES: Final[tuple[Template, ...]] = (
         key="study_type",
         # NOT a bare "interventional": "growth in interventional trials since 2020" is a trend
         # question, and a keyword matcher that claims it produces a confident wrong chart.
-        keywords=("study type", "type of study", "observational", "interventional or"),
+        keywords=(
+            "study type",
+            "type of study",
+            "observational or",
+            "interventional or",
+        ),
         intent=Intent.DISTRIBUTION,
         dimension="study_type",
         phrasing="Distribution of {subject} by study type",
@@ -112,7 +137,13 @@ TEMPLATES: Final[tuple[Template, ...]] = (
     ),
     Template(
         key="condition",
-        keywords=("which conditions", "what conditions", "diseases", "indications"),
+        keywords=(
+            "which conditions",
+            "what conditions",
+            "which diseases",
+            "what diseases",
+            "which indications",
+        ),
         intent=Intent.DISTRIBUTION,
         dimension="condition",
         phrasing="Distribution of {subject} by condition",

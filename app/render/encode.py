@@ -64,7 +64,13 @@ def render(
     if chart_type is ChartType.CHOROPLETH_MAP:
         return _choropleth(plan, bucketset, dim, ctx, warnings)
 
-    buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
+    if chart_type is ChartType.HISTOGRAM:
+        # No Other rollup on a histogram. Bins are contiguous and there are only seven, so a
+        # rollup produces an "OTHER" bar with no edges of its own — `_bin_edges` would hand it
+        # [0, ∞), a full-width bar overlapping every real one.
+        buckets, rollup_annotation = list(bucketset.buckets), None
+    else:
+        buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
     rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in buckets]
     if chart_type is ChartType.HISTOGRAM:
         # A histogram bar spans a range, so the renderer needs its edges, not just its label.
@@ -120,17 +126,38 @@ def render_panels(
     warnings: list[str] = []
     rows: list[dict[str, Any]] = []
 
+    # `max_buckets` is a limit on categories on the axis, not on rows: N series share one axis,
+    # so the cap applies to the union of their keys and every series keeps its bar for a kept
+    # category. Ignoring it entirely let a lead_sponsor comparison emit thousands of rows.
+    keys = _top_keys_across(panels, ctx.options.max_buckets)
+    dropped = _dropped_key_count(panels, keys)
+
     for panel in panels:
         if not panel.bucketset.buckets:
             warnings.append(f"Series {panel.label!r} matched no studies and has no bars.")
         for bucket in panel.bucketset.buckets:
+            if bucket.key not in keys:
+                continue
             row = _row(bucket, dim, plan.metric, ctx.vocab)
             row["series"] = panel.label
             rows.append(row)
 
     rows = _sort_rows(rows, dim, ctx.vocab, ChartType.GROUPED_BAR_CHART, plan.metric)
 
-    annotations: list[dict[str, Any]] = [
+    annotations: list[dict[str, Any]] = []
+    if dropped:
+        annotations.append(
+            {
+                "type": "rollup",
+                "text": (
+                    f"Showing the top {len(keys)} {dim.key} values across all series; "
+                    f"{dropped} further value(s) are not plotted because options.max_buckets "
+                    f"is {ctx.options.max_buckets}."
+                ),
+                "rolled_categories": dropped,
+            }
+        )
+    annotations.append(
         {
             "type": "series",
             "text": "Each series is an independent query; counts are exact within a series.",
@@ -139,7 +166,7 @@ def render_panels(
                 for panel in panels
             ],
         }
-    ]
+    )
     if merged.semantics == "overlapping":
         annotations.append({"type": "note", "text": "Buckets overlap; see meta.coverage"})
 
@@ -173,8 +200,15 @@ def render_crosstab(
     warnings: list[str] = []
     channel = "stack" if chart_type is ChartType.STACKED_BAR_CHART else "series"
 
+    # Same rule as a comparison: cap the axis, not the cells. A condition-by-phase cross-tab over
+    # a full record page produces thousands of cells otherwise, and the caller asked for a limit.
+    kept_primary = _top_primary_keys(cells, ctx.options.max_buckets)
+    hidden = {cell.primary for cell in cells} - kept_primary
+
     rows: list[dict[str, Any]] = []
     for cell in cells:
+        if cell.primary not in kept_primary:
+            continue
         rows.append(
             {
                 dim.key: cell.primary,
@@ -195,7 +229,20 @@ def render_crosstab(
         "label": secondary.label,
     }
 
-    annotations: list[dict[str, Any]] = [
+    annotations: list[dict[str, Any]] = []
+    if hidden:
+        annotations.append(
+            {
+                "type": "rollup",
+                "text": (
+                    f"Showing the top {len(kept_primary)} {dim.key} values by total; "
+                    f"{len(hidden)} further value(s) are not plotted because options.max_buckets "
+                    f"is {ctx.options.max_buckets}."
+                ),
+                "rolled_categories": len(hidden),
+            }
+        )
+    annotations.append(
         {
             "type": "crosstab",
             "text": (
@@ -204,7 +251,7 @@ def render_crosstab(
             ),
             "cells": len(rows),
         }
-    ]
+    )
     if not secondary.partition:
         annotations.append(
             {
@@ -328,6 +375,29 @@ def _study_nct(record: Mapping[str, Any]) -> str | None:
         return nct_id_of(record)
     except KeyError:
         return None
+
+
+def _top_keys_across(panels: Sequence[Panel], max_buckets: int) -> set[str]:
+    """The axis categories a multi-series chart keeps, ranked by total value across series."""
+    totals: dict[str, float] = {}
+    for panel in panels:
+        for bucket in panel.bucketset.buckets:
+            totals[bucket.key] = totals.get(bucket.key, 0.0) + bucket.value
+    ranked = sorted(totals, key=lambda key: (-totals[key], key))
+    return set(ranked[:max_buckets])
+
+
+def _dropped_key_count(panels: Sequence[Panel], kept: set[str]) -> int:
+    every = {bucket.key for panel in panels for bucket in panel.bucketset.buckets}
+    return len(every - kept)
+
+
+def _top_primary_keys(cells: Sequence[CrossCell], max_buckets: int) -> set[str]:
+    totals: dict[str, int] = {}
+    for cell in cells:
+        totals[cell.primary] = totals.get(cell.primary, 0) + cell.value
+    ranked = sorted(totals, key=lambda key: (-totals[key], key))
+    return set(ranked[:max_buckets])
 
 
 def _label_for(dim: Dimension, key: str, vocab: Vocabulary) -> str:
@@ -476,7 +546,10 @@ def _encoding(
         return {
             "x": {
                 **x_channel,
-                "type": "quantitative",
+                # `field` holds a bin *label* ("11-50"), so the channel is ordinal. The numbers
+                # live in bin_start/bin_end; calling this quantitative would tell a renderer to
+                # scale strings.
+                "type": "ordinal",
                 "bin_start": "bin_start",
                 "bin_end": "bin_end",
                 "sort": [bin_label(low, high) for low, high in ENROLLMENT_BINS],

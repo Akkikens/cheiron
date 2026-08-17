@@ -37,6 +37,15 @@ COUNT_PARAMS: Final[Mapping[str, str]] = {
     "fields": "NCTId",
 }
 
+MAX_RETRY_AFTER_S: Final = 30
+"""Ceiling on an honoured `Retry-After`.
+
+Upstream could ask for an hour. Transport sleeps happen outside `RunContext`, which only checks
+its deadline before a wave, so an unbounded wait would hold the request far past
+`REQUEST_BUDGET_MS` instead of failing as `upstream_timeout`. Waiting the ceiling and then
+giving up is the courteous *and* bounded behaviour.
+"""
+
 PAGING_PARAMS: Final = frozenset({"countTotal", "pageSize", "pageToken"})
 """The only params a `pageToken` continuation may legally differ by (notes §3)."""
 
@@ -457,6 +466,11 @@ def _retry_after_seconds(response: httpx.Response) -> int | None:
     if raw is None:
         return None
     try:
-        return max(0, int(float(raw.strip())))
+        seconds = float(raw.strip())
     except ValueError:
         return None
+    # `inf` and `nan` parse as floats and then blow up in int(); a malformed header must not
+    # become a 500 in a module whose whole job is surviving upstream weirdness.
+    if seconds != seconds or seconds in (float("inf"), float("-inf")):
+        return None
+    return max(0, min(int(seconds), MAX_RETRY_AFTER_S))

@@ -28,6 +28,13 @@ from app.engine.modes.records import membership_keys
 from app.errors import CheironError, ErrorCode
 from app.models.plan import AnalysisPlan
 
+_MODE_EXACTNESS: dict[str, int] = {
+    "sampled_then_confirmed": 0,
+    "server_counts": 1,
+    "complete_records": 2,
+}
+"""Least to most exact. A mixed comparison reports the weakest mode it actually used."""
+
 MAX_SERIES = 4
 """SPEC §6.1 selects `grouped_bar_chart` for 2-4 series; beyond that a grouped bar is unreadable
 and the fan-out cost is not justifiable."""
@@ -87,15 +94,35 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
                 )
             )
 
+    # Each series picks its own mode from its own result size, so they can differ. Reporting
+    # the first one's would tell a reader auditing exactness the wrong provenance for half the
+    # bars, so a mixed run says so and reports the least exact mode present.
+    modes = {panel.bucketset.mode for panel in panels}
+    if len(modes) > 1:
+        warnings.append(
+            "Series used different aggregation modes ("
+            + ", ".join(f"{panel.label}: {panel.bucketset.mode}" for panel in panels)
+            + "); meta.coverage reports the least exact of them."
+        )
+    mode = min(modes, key=_MODE_EXACTNESS.__getitem__)
+
+    sampled = [panel.bucketset for panel in panels if panel.bucketset.sample_size is not None]
+
     return (
         BucketSet(
             buckets=list(merged.values()),
             total=total,
             unclassified=unclassified,
             semantics="partition" if dim.partition else "overlapping",
-            mode=panels[0].bucketset.mode,
-            sample_size=panels[0].bucketset.sample_size,
-            sample_coverage=panels[0].bucketset.sample_coverage,
+            mode=mode,
+            complete=all(panel.bucketset.complete for panel in panels),
+            # Summed across whichever series sampled, so the disclosure covers the whole chart.
+            sample_size=sum(b.sample_size or 0 for b in sampled) if sampled else None,
+            sample_coverage=(
+                round(sum(b.sample_coverage or 0.0 for b in sampled) / len(sampled), 3)
+                if sampled
+                else None
+            ),
             warnings=[],
         ),
         warnings,
@@ -160,7 +187,8 @@ async def crosstab_by_counts(
     if cells > affordable:
         raise unaffordable_crosstab(primary, secondary, cells, affordable, ctx)
 
-    ctx.spend(cells, f"the {primary.key} by {secondary.key} cross-tab")
+    # cells + the post-wave /version recheck below, which counts.run also charges for.
+    ctx.spend(cells + 1, f"the {primary.key} by {secondary.key} cross-tab")
 
     pairs = [(first, second) for first in primary_keys for second in secondary_keys]
     coros = [

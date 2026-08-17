@@ -151,13 +151,15 @@ class AnalysisPlan(BaseModel):
     def normalized_key(self) -> str:
         """Stable cache key (SPEC §7).
 
-        `interpretation` and `viz_hint` are excluded because neither changes which numbers come
-        back: one is prose, the other is advice the registry may ignore.
+        `interpretation` is excluded: it is prose and changes no number.
+
+        `viz_hint` is **included**, despite being advisory. The registry consults it to break
+        ties (bar/table/kpi, grouped/stacked), so two requests differing only in the hint can
+        legitimately get different chart types — and sharing a cache entry would serve the first
+        caller's chart to the second. Advice that is sometimes taken is part of the request.
         """
         canonical = _canonicalise(
-            self.model_dump(
-                mode="json", exclude={"interpretation", "viz_hint", "discarded_viz_hint"}
-            )
+            self.model_dump(mode="json", exclude={"interpretation", "discarded_viz_hint"})
         )
         return hashlib.sha256(
             json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
