@@ -40,6 +40,11 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+# Country names are upstream's own spellings, curly apostrophes and all. The key must match what
+# ClinicalTrials.gov returns byte for byte, so an "ambiguous character" here is the point.
+"app/render/countries.py" = ["RUF001"]
+"scripts/build_country_map.py" = ["RUF001"]
+"tests/unit/test_countries_and_demo.py" = ["RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

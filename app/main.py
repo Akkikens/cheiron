@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
 
 from app.analyze import analyze
 from app.cache import RESULT_TTL_SECONDS, TTLStore
@@ -71,6 +73,20 @@ def create_app(
                 "result": app.state.result_cache.stats(),
             },
         }
+
+    demo_page = Path(__file__).resolve().parent.parent / "demo" / "index.html"
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def demo() -> HTMLResponse:
+        """A renderer built only from `encoding` + `data`, as a frontend engineer would have to.
+
+        It is a demo, but it is also a test of the output contract: every chart type is drawn by
+        reading the specification, never by knowing which question was asked. Anything the demo
+        cannot draw without special-casing is a gap in the spec, not in the demo.
+        """
+        if not demo_page.exists():  # pragma: no cover - only if the file is not shipped
+            return HTMLResponse("<p>demo/index.html is missing</p>", status_code=404)
+        return HTMLResponse(demo_page.read_text(encoding="utf-8"))
 
     @app.post("/analyze", response_model=AnalyzeResponse)
     async def analyze_endpoint(body: AnalyzeRequest, request: Request) -> AnalyzeResponse:

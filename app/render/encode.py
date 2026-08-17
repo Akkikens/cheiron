@@ -19,56 +19,12 @@ from app.engine.dimensions import ENROLLMENT_BINS, Dimension, bin_label
 from app.engine.multi import CrossCell, Panel
 from app.models.plan import AnalysisPlan, ChartType, Metric
 from app.models.response import Visualization
+from app.render.countries import ISO_A3
 
 # Minimal ISO-3166 alpha-3 map for names ClinicalTrials.gov actually returns. Unmapped names
 # force a table fallback rather than a choropleth with a silent hole.
-_ISO_A3: dict[str, str] = {
-    "United States": "USA",
-    "Canada": "CAN",
-    "Mexico": "MEX",
-    "United Kingdom": "GBR",
-    "France": "FRA",
-    "Germany": "DEU",
-    "Italy": "ITA",
-    "Spain": "ESP",
-    "China": "CHN",
-    "Japan": "JPN",
-    "Korea, Republic of": "KOR",
-    "India": "IND",
-    "Brazil": "BRA",
-    "Australia": "AUS",
-    "Netherlands": "NLD",
-    "Belgium": "BEL",
-    "Switzerland": "CHE",
-    "Sweden": "SWE",
-    "Poland": "POL",
-    "Israel": "ISR",
-    "Taiwan": "TWN",
-    "Russian Federation": "RUS",
-    "Turkey": "TUR",
-    "Argentina": "ARG",
-    "South Africa": "ZAF",
-    "Denmark": "DNK",
-    "Norway": "NOR",
-    "Finland": "FIN",
-    "Austria": "AUT",
-    "Ireland": "IRL",
-    "New Zealand": "NZL",
-    "Singapore": "SGP",
-    "Hong Kong": "HKG",
-    "Thailand": "THA",
-    "Egypt": "EGY",
-    "Greece": "GRC",
-    "Portugal": "PRT",
-    "Czechia": "CZE",
-    "Hungary": "HUN",
-    "Chile": "CHL",
-    "Colombia": "COL",
-    "Peru": "PER",
-    "Niger": "NER",
-    "Nigeria": "NGA",
-    "Guinea": "GIN",
-}
+_ISO_A3 = ISO_A3
+"""Generated from the corpus by `scripts/build_country_map.py` (226 of 226 names)."""
 
 
 def render(
@@ -562,6 +518,19 @@ def _empty_encoding(chart_type: ChartType, dim: Dimension) -> dict[str, Any]:
     }
 
 
+CHOROPLETH_MIN_COVERAGE = 0.95
+"""Draw the map when it represents at least this share of the result's studies.
+
+Below it, the omission is large enough that the map would misrepresent the distribution, and a
+table of every country is the honest answer.
+"""
+
+
+def _unmapped_counts(bucketset: BucketSet, unmapped: list[str]) -> list[tuple[str, str]]:
+    by_key = {bucket.key: int(bucket.value) for bucket in bucketset.buckets}
+    return [(name, f"{by_key.get(name, 0):,}") for name in unmapped[:5]]
+
+
 def _choropleth(
     plan: AnalysisPlan,
     bucketset: BucketSet,
@@ -586,29 +555,42 @@ def _choropleth(
             }
         )
 
+    mapped_value = sum(int(row[plan.metric.value]) for row in rows)
+    total_value = sum(int(bucket.value) for bucket in bucketset.buckets)
+    coverage = mapped_value / total_value if total_value else 1.0
+
+    annotations: list[dict[str, Any]] = []
     if unmapped:
-        warnings.append(
-            f"{len(unmapped)} country name(s) have no ISO-3166 alpha-3 mapping and were "
-            f"omitted from the choropleth: {', '.join(unmapped[:5])}"
-            + ("…" if len(unmapped) > 5 else "")
-            + "; returning a table of all countries instead."
+        # An all-or-nothing rule threw away a working map because one name in twenty did not
+        # place — "South Korea", which ISO spells "Korea, Republic of". So the map is drawn when
+        # it represents nearly all of the value, and what it could not place is named with its
+        # count rather than quietly dropped. Below that, the table is the honest answer.
+        detail = ", ".join(f"{name} ({fmt})" for name, fmt in _unmapped_counts(bucketset, unmapped))
+        message = (
+            f"{len(unmapped)} country name(s) have no ISO-3166 alpha-3 mapping: {detail}. "
+            f"The map covers {coverage:.1%} of the studies in this result."
         )
-        # Full table fallback with every bucket, including unmapped.
-        table_type = ChartType.TABLE
-        viz, more = render(
-            plan,
-            bucketset,
-            table_type,
-            dim,
-            ctx,
+        if coverage < CHOROPLETH_MIN_COVERAGE:
+            warnings.append(message + " Returning a table of all countries instead.")
+            viz, more = render(plan, bucketset, ChartType.TABLE, dim, ctx)
+            return viz, warnings + more
+
+        warnings.append(message + " They are excluded from the map and listed here.")
+        annotations.append(
+            {
+                "type": "unmapped",
+                "text": message,
+                "countries": unmapped,
+                "value_coverage": round(coverage, 4),
+            }
         )
-        return viz, warnings + more
 
     return (
         Visualization(
             type=ChartType.CHOROPLETH_MAP,
             title=_title(plan, dim),
             subtitle=_subtitle(bucketset, ctx),
+            annotations=annotations or None,
             encoding={
                 "location": {
                     "field": "iso_a3",

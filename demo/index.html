@@ -1,0 +1,438 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cheiron — query to visualization</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #2a313c; --ink: #e6edf3; --dim: #8b949e;
+    --accent: #4c9aff; --warn: #d29922; --ok: #3fb950;
+    --s1: #4c9aff; --s2: #f778ba; --s3: #3fb950; --s4: #d29922; --s5: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px 14px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 17px; letter-spacing: .2px; }
+  h1 small { color: var(--dim); font-weight: 400; margin-left: 10px; font-size: 13px; }
+  main { display: grid; grid-template-columns: 340px 1fr; gap: 0; min-height: calc(100vh - 60px); }
+  aside { border-right: 1px solid var(--line); padding: 18px; }
+  section { padding: 22px 26px; overflow: auto; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 12px 0 4px; }
+  input, select, textarea, button {
+    width: 100%; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit;
+  }
+  textarea { resize: vertical; min-height: 62px; }
+  button { margin-top: 16px; background: var(--accent); border-color: var(--accent);
+           color: #08121f; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: progress; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .examples { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .examples button { background: none; border: none; color: var(--accent); text-align: left;
+                     padding: 4px 0; margin: 0; font-weight: 400; width: 100%; }
+  .examples button:hover { text-decoration: underline; }
+  .title { font-size: 19px; font-weight: 650; }
+  .subtitle { color: var(--dim); margin: 2px 0 18px; }
+  .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+           padding: 16px; overflow-x: auto; }
+  .meta { margin-top: 18px; display: grid; gap: 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
+             letter-spacing: .08em; color: var(--dim); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-variant-numeric: tabular-nums; }
+  .kv dt { color: var(--dim); } .kv dd { margin: 0; }
+  .warn { border-left: 3px solid var(--warn); padding-left: 10px; margin: 6px 0; color: #f0d68a; }
+  .assume { border-left: 3px solid var(--dim); padding-left: 10px; margin: 6px 0; color: var(--dim); }
+  .err { border-left: 3px solid #f85149; padding-left: 10px; color: #ffa198; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 6px 12px 6px 0; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  .cite { font-size: 12px; color: var(--dim); }
+  .cite a { color: var(--accent); text-decoration: none; }
+  .kpi { font-size: 54px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  svg text { fill: var(--dim); font-size: 11px; }
+  svg .axis line, svg .axis path { stroke: var(--line); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; }
+  .hint { color: var(--dim); font-size: 12px; margin-top: 8px; }
+</style>
+
+<header>
+  <h1>Cheiron <small>a question in, a renderable visualization specification out</small></h1>
+</header>
+
+<main>
+  <aside>
+    <label for="q">Question</label>
+    <textarea id="q">How many trials by phase?</textarea>
+
+    <div class="row">
+      <div><label for="drug">drug_name</label><input id="drug" value="Pembrolizumab"></div>
+      <div><label for="cond">condition</label><input id="cond"></div>
+    </div>
+    <div class="row">
+      <div><label for="sy">start_year</label><input id="sy" type="number"></div>
+      <div><label for="ey">end_year</label><input id="ey" type="number"></div>
+    </div>
+    <div class="row">
+      <div><label for="mb">max_buckets</label><input id="mb" type="number" value="20"></div>
+      <div><label for="cpd">citations</label><input id="cpd" type="number" value="3"></div>
+    </div>
+
+    <button id="go">Analyze</button>
+
+    <div class="examples">
+      <h3 style="font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em">Try</h3>
+      <button data-q="How many trials by phase?" data-drug="Pembrolizumab">Trials by phase</button>
+      <button data-q="How has this changed over time?" data-drug="Pembrolizumab" data-sy="2019" data-ey="2025">Trend over time</button>
+      <button data-q="What is the recruitment status?" data-drug="Pembrolizumab">Recruitment status</button>
+      <button data-q="Which countries run these trials?" data-cond="glioblastoma">Countries</button>
+      <button data-q="How big are these trials?" data-cond="glioblastoma" data-sy="2024" data-ey="2025">Enrollment histogram</button>
+      <button data-q="Which interventions are studied together?" data-cond="glioblastoma" data-sy="2024" data-ey="2025">Co-occurrence network</button>
+      <button data-q="How many are industry funded?" data-drug="Pembrolizumab">Sponsor class</button>
+      <button data-q="Tell me a joke about trials">An unplannable question</button>
+    </div>
+  </aside>
+
+  <section id="out"><p class="hint">Ask something to see a specification rendered.</p></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const PALETTE = ['--s1','--s2','--s3','--s4','--s5'].map(v => getComputedStyle(document.documentElement).getPropertyValue(v).trim());
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt = (n) => typeof n === 'number' ? n.toLocaleString() : n;
+
+function svg(w, h, body) {
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="xMinYMin meet">${body}</svg>`;
+}
+
+// --- generic renderers, driven entirely by `encoding` + `data` -----------------------------
+
+function barLike(viz, { grouped = false, stacked = false } = {}) {
+  const enc = viz.encoding, rows = viz.data;
+  const xf = enc.x.field, yf = enc.y.field;
+  const seriesField = grouped ? 'series' : (stacked ? 'stack' : null);
+  const cats = [...new Set(rows.map(r => String(r[xf])))];
+  const series = seriesField ? [...new Set(rows.map(r => String(r[seriesField])))] : ['all'];
+
+  const W = 900, H = 420, padL = 64, padB = 76, padT = 12, padR = 12;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(1, ...(stacked
+    ? cats.map(c => rows.filter(r => String(r[xf]) === c).reduce((a, r) => a + (+r[yf] || 0), 0))
+    : rows.map(r => +r[yf] || 0)));
+  const bw = iw / Math.max(cats.length, 1);
+
+  let body = `<g class="axis"><line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"/></g>`;
+  for (let t = 0; t <= 4; t++) {
+    const v = max * t / 4, y = padT + ih - (v / max) * ih;
+    body += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line)" stroke-dasharray="2 4"/>`;
+    body += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end">${fmt(Math.round(v))}</text>`;
+  }
+
+  cats.forEach((cat, i) => {
+    const here = rows.filter(r => String(r[xf]) === cat);
+    const x0 = padL + i * bw;
+    if (stacked) {
+      let acc = 0;
+      here.forEach(r => {
+        const v = +r[yf] || 0, h = (v / max) * ih;
+        const y = padT + ih - (acc / max) * ih - h;
+        const ci = series.indexOf(String(r[seriesField]));
+        body += `<rect x="${x0 + bw * 0.15}" y="${y}" width="${bw * 0.7}" height="${Math.max(h, 0)}"
+                 fill="${PALETTE[ci % PALETTE.length]}" rx="2"><title>${esc(cat)} · ${esc(r[seriesField])}: ${fmt(v)}</title></rect>`;
+        acc += v;
+      });
+    } else {
+      const n = Math.max(here.length, 1), inner = (bw * 0.7) / n;
+      here.forEach((r, k) => {
+        const v = +r[yf] || 0, h = (v / max) * ih;
+        const ci = seriesField ? series.indexOf(String(r[seriesField])) : 0;
+        body += `<rect x="${x0 + bw * 0.15 + k * inner}" y="${padT + ih - h}" width="${Math.max(inner - 2, 1)}"
+                 height="${Math.max(h, 0)}" fill="${PALETTE[ci % PALETTE.length]}" rx="2">
+                 <title>${esc(cat)}${seriesField ? ' · ' + esc(r[seriesField]) : ''}: ${fmt(v)}</title></rect>`;
+      });
+    }
+    const label = String(here[0]?.[`${xf}_label`] ?? cat);
+    body += `<text transform="translate(${x0 + bw / 2},${padT + ih + 14}) rotate(35)"
+             text-anchor="start">${esc(label.length > 22 ? label.slice(0, 21) + '…' : label)}</text>`;
+  });
+
+  const legend = seriesField && series.length > 1
+    ? `<div class="legend">${series.map((s, i) =>
+        `<span><i class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(s)}</span>`).join('')}</div>`
+    : '';
+  return legend + svg(W, H, body) + axisLabels(enc);
+}
+
+function timeSeries(viz) {
+  const enc = viz.encoding, rows = [...viz.data];
+  const xf = enc.x.field, yf = enc.y.field;
+  const W = 900, H = 400, padL = 64, padB = 44, padT = 12, padR = 14;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(1, ...rows.map(r => +r[yf] || 0));
+  const step = iw / Math.max(rows.length - 1, 1);
+  const pts = rows.map((r, i) => [padL + i * step, padT + ih - ((+r[yf] || 0) / max) * ih]);
+
+  let body = `<g class="axis"><line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"/></g>`;
+  for (let t = 0; t <= 4; t++) {
+    const v = max * t / 4, y = padT + ih - (v / max) * ih;
+    body += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line)" stroke-dasharray="2 4"/>`;
+    body += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end">${fmt(Math.round(v))}</text>`;
+  }
+  body += `<polyline fill="none" stroke="${PALETTE[0]}" stroke-width="2"
+           points="${pts.map(p => p.join(',')).join(' ')}"/>`;
+  rows.forEach((r, i) => {
+    body += `<circle cx="${pts[i][0]}" cy="${pts[i][1]}" r="4" fill="${PALETTE[0]}">
+             <title>${esc(r[xf])}: ${fmt(r[yf])}</title></circle>`;
+    body += `<text x="${pts[i][0]}" y="${padT + ih + 18}" text-anchor="middle">${esc(r[xf])}</text>`;
+  });
+  return svg(W, H, body) + axisLabels(enc);
+}
+
+function histogram(viz) {
+  const enc = viz.encoding, rows = viz.data;
+  const yf = enc.y.field;
+  const W = 900, H = 400, padL = 64, padB = 60, padT = 12, padR = 14;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const max = Math.max(1, ...rows.map(r => +r[yf] || 0));
+  const bw = iw / Math.max(rows.length, 1);
+
+  let body = `<g class="axis"><line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"/></g>`;
+  for (let t = 0; t <= 4; t++) {
+    const v = max * t / 4, y = padT + ih - (v / max) * ih;
+    body += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line)" stroke-dasharray="2 4"/>`;
+    body += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end">${fmt(Math.round(v))}</text>`;
+  }
+  rows.forEach((r, i) => {
+    const v = +r[yf] || 0, h = (v / max) * ih;
+    // Bars touch: a histogram's bins are contiguous, unlike a bar chart's categories.
+    body += `<rect x="${padL + i * bw}" y="${padT + ih - h}" width="${bw - 1}" height="${Math.max(h, 0)}"
+             fill="${PALETTE[0]}" opacity=".85"><title>${esc(r[enc.x.field])}: ${fmt(v)}</title></rect>`;
+    body += `<text transform="translate(${padL + i * bw + bw / 2},${padT + ih + 14}) rotate(30)"
+             text-anchor="start">${esc(r[enc.x.field])}</text>`;
+  });
+  return svg(W, H, body) + axisLabels(enc);
+}
+
+function scatter(viz) {
+  const enc = viz.encoding, rows = viz.data;
+  const xf = enc.x.field, yf = enc.y.field;
+  const W = 900, H = 440, padL = 70, padB = 44, padT = 14, padR = 16;
+  const iw = W - padL - padR, ih = H - padT - padB;
+  const xs = rows.map(r => +r[xf]), ys = rows.map(r => +r[yf]);
+  const xmin = Math.min(...xs), xmax = Math.max(...xs);
+  // Log scale: enrollment spans orders of magnitude, so a linear axis is one dot and a wall.
+  const ly = (v) => Math.log10(Math.max(v, 1) + 1);
+  const ymax = Math.max(...ys.map(ly));
+
+  let body = `<g class="axis"><line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}"/></g>`;
+  for (let t = 0; t <= 4; t++) {
+    const y = padT + ih - (t / 4) * ih, v = Math.round(10 ** ((t / 4) * ymax) - 1);
+    body += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--line)" stroke-dasharray="2 4"/>`;
+    body += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end">${fmt(v)}</text>`;
+  }
+  rows.forEach(r => {
+    const x = padL + ((+r[xf] - xmin) / Math.max(xmax - xmin, 1)) * iw;
+    const y = padT + ih - (ly(+r[yf]) / ymax) * ih;
+    body += `<circle cx="${x}" cy="${y}" r="4" fill="${PALETTE[0]}" opacity=".62">
+             <title>${esc(r.nct_id)} · ${esc(r[xf])} · ${fmt(r[yf])}</title></circle>`;
+  });
+  for (let y = Math.ceil(xmin); y <= xmax; y++) {
+    const x = padL + ((y - xmin) / Math.max(xmax - xmin, 1)) * iw;
+    body += `<text x="${x}" y="${padT + ih + 18}" text-anchor="middle">${y}</text>`;
+  }
+  return svg(W, H, body) + axisLabels(enc) + `<p class="hint">y is log-scaled: enrollment spans orders of magnitude.</p>`;
+}
+
+function network(viz) {
+  const { nodes, edges } = viz.data;
+  const W = 900, H = 560, cx = W / 2, cy = H / 2, R = Math.min(W, H) / 2 - 90;
+  const pos = new Map(nodes.map((n, i) => {
+    const a = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
+    return [n.id, [cx + R * Math.cos(a), cy + R * Math.sin(a)]];
+  }));
+  const groups = [...new Set(nodes.map(n => n.group))];
+  const maxW = Math.max(1, ...edges.map(e => e.weight));
+  const maxNode = Math.max(1, ...nodes.map(n => n.weight));
+
+  let body = '';
+  edges.forEach(e => {
+    const a = pos.get(e.source), b = pos.get(e.target);
+    if (!a || !b) return;
+    body += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${PALETTE[0]}"
+             stroke-opacity="${0.15 + 0.55 * (e.weight / maxW)}" stroke-width="${1 + 4 * (e.weight / maxW)}">
+             <title>${esc(e.source)} ↔ ${esc(e.target)}: ${e.weight} trials</title></line>`;
+  });
+  nodes.forEach(n => {
+    const [x, y] = pos.get(n.id);
+    const r = 5 + 11 * Math.sqrt(n.weight / maxNode);
+    const c = PALETTE[groups.indexOf(n.group) % PALETTE.length];
+    body += `<circle cx="${x}" cy="${y}" r="${r}" fill="${c}"><title>${esc(n.id)} · ${n.weight} trials</title></circle>`;
+    const right = x > cx;
+    body += `<text x="${x + (right ? r + 5 : -r - 5)}" y="${y + 4}" text-anchor="${right ? 'start' : 'end'}"
+             fill="var(--ink)">${esc(n.label.length > 26 ? n.label.slice(0, 25) + '…' : n.label)}</text>`;
+  });
+  const legend = `<div class="legend">${groups.map((g, i) =>
+    `<span><i class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></i>${esc(g)}</span>`).join('')}
+    <span style="color:var(--dim)">node size = trials · edge width = co-occurring trials</span></div>`;
+  return legend + svg(W, H, body);
+}
+
+function choropleth(viz) {
+  // No map geometry is bundled, so the honest fallback is a ranked bar of the same values —
+  // the spec carries ISO-3166 codes, so a real renderer would join them to a topology.
+  const enc = viz.encoding, rows = viz.data;
+  const valueField = enc.value?.field ?? 'study_count';
+  const max = Math.max(1, ...rows.map(r => +r[valueField] || 0));
+  return `<table><thead><tr><th>Country</th><th>ISO</th><th style="width:55%">${esc(enc.value?.label ?? 'Value')}</th></tr></thead>
+    <tbody>${rows.map(r => `<tr><td>${esc(r.country ?? r[enc.location?.field] ?? '')}</td>
+      <td class="cite">${esc(r.iso_a3 ?? '—')}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div style="height:9px;border-radius:3px;background:${PALETTE[0]};width:${(100 * (+r[valueField] || 0) / max).toFixed(1)}%"></div>
+        <span>${fmt(r[valueField])}</span></div></td></tr>`).join('')}</tbody></table>
+    <p class="hint">Rendered as a ranked list: this demo bundles no map topology. The spec carries
+    ISO-3166 alpha-3 codes so a production renderer can join them to one.</p>`;
+}
+
+function table(viz) {
+  const rows = viz.data;
+  if (!rows.length) return `<p class="hint">No rows — the query matched no studies.</p>`;
+  const cols = Object.keys(rows[0]).filter(k => k !== 'citations' && k !== 'citation_note');
+  return `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${cols.map(c => `<td>${esc(fmt(r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function kpi(viz) {
+  const enc = viz.encoding, row = viz.data[0] ?? {};
+  return `<div class="kpi">${fmt(row[enc.value?.field] ?? '—')}</div>
+          <div class="subtitle">${esc(row[enc.label?.field] ?? enc.value?.label ?? '')}</div>`;
+}
+
+function axisLabels(enc) {
+  return `<div class="hint">x: ${esc(enc.x?.label ?? '')} · y: ${esc(enc.y?.label ?? '')}</div>`;
+}
+
+const RENDERERS = {
+  bar_chart: v => barLike(v),
+  grouped_bar_chart: v => barLike(v, { grouped: true }),
+  stacked_bar_chart: v => barLike(v, { stacked: true }),
+  time_series: timeSeries,
+  histogram: histogram,
+  scatter_plot: scatter,
+  network_graph: network,
+  choropleth_map: choropleth,
+  table: table,
+  kpi: kpi,
+};
+
+// --- meta panels ---------------------------------------------------------------------------
+
+function metaPanels(meta) {
+  const c = meta.coverage ?? {};
+  const cards = [];
+
+  cards.push(`<div class="card"><h3>Coverage</h3><dl class="kv">
+    <dt>mode</dt><dd>${esc(c.aggregation_mode)}</dd>
+    <dt>semantics</dt><dd>${esc(c.groupby_semantics)}</dd>
+    <dt>total studies</dt><dd>${fmt(meta.total_matching_studies)}</dd>
+    <dt>bucket sum</dt><dd>${fmt(c.bucket_sum)}</dd>
+    <dt>unclassified</dt><dd>${fmt(c.unclassified_count)}</dd>
+    ${c.sample_size != null ? `<dt>sampled</dt><dd>${fmt(c.sample_size)} (${(100 * c.sample_coverage).toFixed(1)}%)</dd>` : ''}
+    </dl>${c.overlap_note ? `<p class="hint">${esc(c.overlap_note)}</p>` : ''}</div>`);
+
+  if (meta.warnings?.length) {
+    cards.push(`<div class="card"><h3>Warnings</h3>${meta.warnings.map(w => `<p class="warn">${esc(w)}</p>`).join('')}</div>`);
+  }
+  if (meta.assumptions?.length) {
+    cards.push(`<div class="card"><h3>Assumptions</h3>${meta.assumptions.map(a => `<p class="assume">${esc(a)}</p>`).join('')}</div>`);
+  }
+
+  const cited = (Array.isArray(meta._rows) ? meta._rows : []).filter(r => r.citations?.length);
+  if (cited.length) {
+    cards.push(`<div class="card"><h3>Citations</h3>${cited.slice(0, 4).map(r => `
+      <p class="cite"><strong style="color:var(--ink)">${esc(r._key)}</strong> — ${esc(r.citation_note ?? '')}<br>
+      ${r.citations.map(ct => `<a href="${esc(ct.url)}" target="_blank" rel="noopener">${esc(ct.nct_id)}</a>
+        <code style="color:var(--dim)">${esc(ct.excerpt.length > 90 ? ct.excerpt.slice(0, 89) + '…' : ct.excerpt)}</code>`).join('<br>')}
+      </p>`).join('')}</div>`);
+  }
+
+  cards.push(`<div class="card"><h3>Provenance</h3><dl class="kv">
+    <dt>source</dt><dd>${esc(meta.provenance?.source)}</dd>
+    <dt>api</dt><dd>${esc(meta.provenance?.api_version)}</dd>
+    <dt>data as of</dt><dd>${esc(meta.provenance?.data_timestamp)}</dd>
+    <dt>planner</dt><dd>${esc(meta.planner)}</dd>
+    <dt>timing</dt><dd>${fmt(meta.timing_ms?.total)} ms</dd>
+    </dl><p class="hint">${esc(meta.interpretation ?? '')}</p></div>`);
+
+  return `<div class="meta">${cards.join('')}</div>`;
+}
+
+// --- drive ----------------------------------------------------------------------------------
+
+async function run() {
+  const btn = $('go');
+  btn.disabled = true; btn.textContent = 'Analyzing…';
+  const body = { query: $('q').value, options: {
+    max_buckets: +$('mb').value || 20,
+    citations_per_datum: +$('cpd').value || 0,
+    include_citations: (+$('cpd').value || 0) > 0,
+  }};
+  if ($('drug').value) body.drug_name = $('drug').value;
+  if ($('cond').value) body.condition = $('cond').value;
+  if ($('sy').value) body.start_year = +$('sy').value;
+  if ($('ey').value) body.end_year = +$('ey').value;
+
+  try {
+    const res = await fetch('/analyze', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const json = await res.json();
+    $('out').innerHTML = res.ok ? renderOk(json) : renderErr(json, res.status);
+  } catch (e) {
+    $('out').innerHTML = `<div class="card"><p class="err">${esc(e.message)}</p></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Analyze';
+  }
+}
+
+function renderOk(json) {
+  const v = json.visualization, meta = json.meta;
+  const render = RENDERERS[v.type] ?? table;
+  // Citations live on the rows; hand them to the meta panel with a readable key per row.
+  if (Array.isArray(v.data)) {
+    const keyField = v.encoding?.x?.field ?? Object.keys(v.data[0] ?? {})[0];
+    meta._rows = v.data.map(r => ({ ...r, _key: r[`${keyField}_label`] ?? r[keyField] }));
+  } else if (v.data?.edges) {
+    meta._rows = v.data.edges.map(e => ({ ...e, _key: `${e.source} ↔ ${e.target}` }));
+  }
+  const annotations = (v.annotations ?? []).map(a => `<p class="hint">${esc(a.text ?? JSON.stringify(a))}</p>`).join('');
+  return `<div class="title">${esc(v.title)}</div>
+    <div class="subtitle">${esc(v.subtitle ?? '')}</div>
+    <div class="chart">${render(v)}${annotations}</div>
+    ${metaPanels(meta)}
+    <details style="margin-top:14px"><summary class="hint" style="cursor:pointer">Raw specification</summary>
+      <pre class="card" style="overflow:auto"><code>${esc(JSON.stringify(json, (k, x) => k === '_rows' ? undefined : x, 2))}</code></pre>
+    </details>`;
+}
+
+function renderErr(json, status) {
+  const e = json.error ?? {};
+  return `<div class="card">
+    <h3>${status} · ${esc(e.code ?? 'error')}</h3>
+    <p class="err">${esc(e.message ?? '')}</p>
+    ${(e.details ?? []).map(d => `<p class="hint">${esc(d.suggestion ?? d.message ?? JSON.stringify(d))}</p>`).join('')}
+    <p class="cite">request_id ${esc(e.request_id ?? '—')}</p>
+  </div>`;
+}
+
+$('go').addEventListener('click', run);
+document.querySelectorAll('.examples button').forEach(b => b.addEventListener('click', () => {
+  $('q').value = b.dataset.q;
+  $('drug').value = b.dataset.drug ?? '';
+  $('cond').value = b.dataset.cond ?? '';
+  $('sy').value = b.dataset.sy ?? '';
+  $('ey').value = b.dataset.ey ?? '';
+  run();
+}));
+</script>
