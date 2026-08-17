@@ -529,14 +529,16 @@ for that step — including the two commits that say a shipped chart was a fabri
   that cannot fail is worse than no test.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **Five adversarial review passes found 36 defects** the spec-derived tests could not see —
-  nine, twelve, six, five, then four. The tail is the interesting part: later passes kept finding
-  defects *introduced by the previous pass's fixes*. One truncation fix suppressed a warning and
-  replaced it with false prose; the next attempt at it made the reported overlap go negative. One
-  keyword was corrected three times before the right answer turned out to be deleting the whole
-  family — the third phrasing could not have worked, since "per &lt;dimension&gt;" is a continuation
-  by construction. The rate is falling and has not reached zero, which is the honest state to
-  report. Each is pinned by a regression test in
+- **Six adversarial review passes found 42 defects** the spec-derived tests could not see — nine,
+  twelve, six, five, four, then six. The tail is the interesting part: later passes kept finding
+  defects *introduced by the previous pass's fixes*, and they clustered. Five consecutive fixes to
+  `coverage.py` each introduced the next, because the file tracked one flag for two different
+  events — an aggregation that stopped early, where nothing beyond the cap was ever counted, and
+  an axis narrowed for plotting, where everything was counted and some was not drawn. Patching a
+  sixth time would have been the wrong move; separating the two ended it. A planner keyword was
+  likewise corrected three times before the right answer turned out to be deleting the whole
+  family — the third phrasing could not have worked, since "per &lt;dimension&gt;" is a
+  continuation by construction. Each defect is pinned by a regression test in
   `tests/unit/test_review_fixes.py` and `tests/unit/test_multi.py`, and named in the commit that
   fixed it rather than quietly corrected, because the pattern in them is more useful than the
   fixes. Two shipped fabricated numbers: a comparison chart labelled with one series' name over
