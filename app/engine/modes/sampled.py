@@ -78,11 +78,26 @@ async def run(
 
     frequencies, sample_size = await _discover(ctx, params, dim, sample_pages)
     if not frequencies:
+        # Still probe MISSING: a relevance-ranked sample can miss the field while the corpus
+        # has values. Inventing unclassified=total would report every matching study as missing.
+        ctx.spend(2, f"MISSING probe after an empty {dim.key} sample")
+        unclassified = await ctx.client.count(with_predicate(params, Essie.missing(dim.area)))
+        await ctx.assert_data_unchanged()
         warnings.append(
             f"No {dim.key} values were found in the {sample_size:,}-study sample, so no labels "
-            f"could be confirmed. The {total:,} matching studies may all lack this field."
+            f"could be confirmed. {unclassified:,} of {total:,} matching studies lack this "
+            f"field; the rest may carry labels the sample did not see."
         )
-        return _empty(total, sample_size, dim, warnings)
+        return BucketSet(
+            buckets=[],
+            total=total,
+            unclassified=unclassified,
+            semantics="partition" if dim.partition else "overlapping",
+            mode=MODE_NAME,
+            sample_size=sample_size,
+            sample_coverage=round(sample_size / total, 3) if total else None,
+            warnings=warnings,
+        )
 
     requested_k = ctx.options.max_buckets
     candidates, k_warning = _candidates(frequencies, requested_k, ctx)
@@ -278,17 +293,4 @@ def _disclosure(sample_size: int, total: int) -> str:
         f"{total:,} matching studies). Each displayed count is exact and confirmed against the "
         f"full corpus; however, a label appearing only outside the sample may be missing from "
         f"this chart."
-    )
-
-
-def _empty(total: int, sample_size: int, dim: Dimension, warnings: list[str]) -> BucketSet:
-    return BucketSet(
-        buckets=[],
-        total=total,
-        unclassified=total,
-        semantics="partition" if dim.partition else "overlapping",
-        mode=MODE_NAME,
-        sample_size=sample_size,
-        sample_coverage=round(sample_size / total, 3) if total else None,
-        warnings=warnings,
     )

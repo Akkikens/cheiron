@@ -15,10 +15,9 @@ from app.config import Settings, get_settings
 from app.ctg.client import CTGClient, CTGTransport
 from app.ctg.vocab import VocabularyCache
 from app.errors import install_error_handlers, install_request_id_middleware
-from app.models.plan import AnalysisPlan
 from app.models.request import AnalyzeRequest
 from app.models.response import AnalyzeResponse
-from app.planner.llm import ChatCompleter, openai_completer
+from app.planner.llm import CachedPlan, ChatCompleter, openai_completer
 
 
 def create_app(
@@ -62,7 +61,7 @@ def create_app(
     app.state.settings = resolved
     app.state.transport = owned
     app.state.vocabulary_cache = vocabulary_cache
-    app.state.plan_cache = TTLStore[AnalysisPlan]()
+    app.state.plan_cache = TTLStore[CachedPlan]()
     app.state.result_cache = TTLStore[AnalyzeResponse](ttl=RESULT_TTL_SECONDS)
     app.state.vocabulary_ready = False
 

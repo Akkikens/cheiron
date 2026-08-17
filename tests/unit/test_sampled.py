@@ -308,13 +308,16 @@ async def test_sample_pages_bounds_the_walk(settings: Settings) -> None:
 
 
 async def test_an_empty_sample_says_so_rather_than_returning_nothing(settings: Settings) -> None:
-    counts = {Essie.missing("LeadSponsorName"): TOTAL}
+    counts = {Essie.missing("LeadSponsorName"): 412}
     upstream = Upstream([[]], counts)
 
     bucketset, _ = await run_default(settings, upstream)
 
     assert bucketset.buckets == []
+    assert bucketset.unclassified == 412
+    assert bucketset.unclassified != TOTAL  # never invent unclassified=total
     assert any("no labels could be confirmed" in w for w in bucketset.warnings)
+    assert any("412" in w for w in bucketset.warnings)
 
 
 # --- confirmation edge cases ----------------------------------------------------------------

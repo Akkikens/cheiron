@@ -19,7 +19,7 @@ from app.ctg.client import CTGClient
 from app.ctg.vocab import Vocabulary
 from app.models.plan import AnalysisPlan, Intent, Metric
 from app.models.request import AnalyzeRequest
-from app.planner.llm import MAX_ATTEMPTS, LLMPlanner, _structured_hints, _system_prompt
+from app.planner.llm import MAX_ATTEMPTS, CachedPlan, LLMPlanner, _structured_hints, _system_prompt
 from app.planner.validate import validate_plan
 from tests.conftest import Handler, stub_transport
 
@@ -272,12 +272,26 @@ async def test_hard_constraints_are_stated_in_the_prompt_too(vocab: Vocabulary) 
     assert "Pembrolizumab" in user_message
 
 
+async def test_a_repaired_plan_stays_marked_repaired_on_cache_hit(vocab: Vocabulary) -> None:
+    broken = a_plan_payload(filters={**a_plan_payload()["filters"], "phase": ["PHASE_SEVEN"]})
+    model = Model(json.dumps(broken), json.dumps(a_plan_payload()))
+    cache: TTLStore[CachedPlan] = TTLStore()
+    planner = LLMPlanner(model, cache=cache)
+
+    first = await planner.plan(a_request(), vocab)
+    second = await planner.plan(a_request(), vocab)
+
+    assert first.planner == "llm_repaired"
+    assert second.planner == "llm_repaired"
+    assert model.calls == 2  # second call is a cache hit
+
+
 # --- caching --------------------------------------------------------------------------------
 
 
 async def test_a_repeat_question_skips_the_model(vocab: Vocabulary) -> None:
     model = Model(json.dumps(a_plan_payload()))
-    cache: TTLStore[AnalysisPlan] = TTLStore()
+    cache: TTLStore[CachedPlan] = TTLStore()
     planner = LLMPlanner(model, cache=cache)
 
     first = await planner.plan(a_request(), vocab)
@@ -290,7 +304,7 @@ async def test_a_repeat_question_skips_the_model(vocab: Vocabulary) -> None:
 
 async def test_whitespace_and_case_do_not_split_the_cache(vocab: Vocabulary) -> None:
     model = Model(json.dumps(a_plan_payload()))
-    cache: TTLStore[AnalysisPlan] = TTLStore()
+    cache: TTLStore[CachedPlan] = TTLStore()
     planner = LLMPlanner(model, cache=cache)
 
     await planner.plan(a_request("How many trials by phase?"), vocab)
@@ -302,7 +316,7 @@ async def test_whitespace_and_case_do_not_split_the_cache(vocab: Vocabulary) -> 
 async def test_different_structured_hints_are_different_cache_entries(vocab: Vocabulary) -> None:
     """The hints change the plan, so they must change the key."""
     model = Model(json.dumps(a_plan_payload()))
-    cache: TTLStore[AnalysisPlan] = TTLStore()
+    cache: TTLStore[CachedPlan] = TTLStore()
     planner = LLMPlanner(model, cache=cache)
 
     await planner.plan(a_request(drug_name="Pembrolizumab"), vocab)

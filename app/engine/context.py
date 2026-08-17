@@ -82,6 +82,16 @@ class RunContext:
             )
         self._spent += n
 
+    def reset_spend(self, to: int = 0) -> None:
+        """Restore the spend ledger. Used by SPEC §7's whole-group-by retry after a timestamp move.
+
+        Without this, the failed attempt's spend stays charged and the retry almost always
+        raises BudgetExhausted before it can redo the fan-out.
+        """
+        if to < 0 or to > self._spent:
+            raise ValueError(f"reset_spend({to}) is outside 0..{self._spent}")
+        self._spent = to
+
     async def observed_data_timestamp(self) -> str:
         """A live `/version` read, not `self.data_timestamp`.
 

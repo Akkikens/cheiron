@@ -172,6 +172,19 @@ def _check_coherence(plan: AnalysisPlan) -> list[str]:
             "the cross-tab alone."
         )
 
+    if plan.metric is not Metric.STUDY_COUNT and plan.secondary_group_by is not None:
+        errors.append(
+            f"metric is {plan.metric.value!r} with secondary_group_by set; a cross-tab counts "
+            f"studies per cell, not participants. Drop secondary_group_by, or set metric to "
+            f"'study_count'."
+        )
+
+    if len(plan.series) > 4:
+        errors.append(
+            f"series has {len(plan.series)} entries; this service renders at most 4. Drop "
+            f"series beyond the four you care about, or ask one question per series."
+        )
+
     # `scatter` deliberately does NOT require secondary_group_by. It plots one point per study
     # with enrollment against start date, so the second axis is a property of the chart rather
     # than a choice the plan makes: demanding a field the renderer ignores would invite a
@@ -249,13 +262,63 @@ def _check_interpretation(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
     for quotable in sorted(_all_quotable_text(plan, vocab), key=len, reverse=True):
         residue = re.sub(re.escape(quotable), " ", residue, flags=re.IGNORECASE)
 
-    smuggled = [token for token in _NUMBER.findall(residue) if not _is_year(token)]
+    # Years are only allowed when they appear as filter bounds — otherwise "2024 trials" is a
+    # year-shaped count the model invented.
+    allowed_years = _filter_years(plan)
+    smuggled = [token for token in _NUMBER.findall(residue) if token not in allowed_years]
     if smuggled:
         errors.append(
-            f"interpretation contains the number(s) {', '.join(smuggled)}, which are not years. "
-            f"The interpretation describes what was counted; it must never state a count, "
-            f"because the counts come from the API after planning."
+            f"interpretation contains the number(s) {', '.join(smuggled)}, which are not years "
+            f"from the plan's filters. The interpretation describes what was counted; it must "
+            f"never state a count, because the counts come from the API after planning."
         )
+    return errors
+
+
+def _filter_years(plan: AnalysisPlan) -> set[str]:
+    years: set[str] = set()
+    for filters in (plan.filters, *(series.filters for series in plan.series)):
+        if filters.start_year is not None:
+            years.add(str(filters.start_year))
+        if filters.end_year is not None:
+            years.add(str(filters.end_year))
+    return years
+
+
+def _check_labels_for_smuggled_counts(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
+    """Series labels and free-text filters reach chart chrome; they must not invent counts."""
+    errors: list[str] = []
+    quotable = set(_all_quotable_text(plan, vocab))
+    # Series labels are themselves quotable for the interpretation check; strip them so we
+    # inspect each label in isolation rather than allowing it to excuse itself.
+    for series in plan.series:
+        residue = series.label
+        for allowed in sorted((q for q in quotable if q != series.label), key=len, reverse=True):
+            residue = re.sub(re.escape(allowed), " ", residue, flags=re.IGNORECASE)
+        smuggled = [token for token in _NUMBER.findall(residue) if not _is_year(token)]
+        if smuggled:
+            errors.append(
+                f"series label {series.label!r} contains the number(s) {', '.join(smuggled)}. "
+                f"Labels name a series; they must never state a count."
+            )
+
+    for scope, filters in (
+        ("filters", plan.filters),
+        *((f"series[{i}].filters", s.filters) for i, s in enumerate(plan.series)),
+    ):
+        for field_name in ("condition", "intervention", "sponsor", "term", "country"):
+            raw = getattr(filters, field_name)
+            if not raw:
+                continue
+            # A bare filter value is allowed to contain digits that are part of the name
+            # (COVID-19). Parenthetical counts are not.
+            if _NUMBER.search(raw) and (
+                "(" in raw or " n=" in raw.casefold() or "n=" in raw.casefold()
+            ):
+                errors.append(
+                    f"{scope}.{field_name} is {raw!r}, which looks like it embeds a count. "
+                    f"Use the search string alone; counts come from the API after planning."
+                )
     return errors
 
 
@@ -280,6 +343,7 @@ def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
         *_check_years(plan),
         *_check_coherence(plan),
         *_check_interpretation(plan, vocab),
+        *_check_labels_for_smuggled_counts(plan, vocab),
     ]
 
 
@@ -297,6 +361,24 @@ HARD_CONSTRAINTS: dict[str, str] = {
 }
 
 
+def overlay_filters(base: StudyFilter, overlay: StudyFilter) -> StudyFilter:
+    """AND hard-constraint filters into a series overlay. Overlay fields win when set.
+
+    A comparison varies one field across series (usually sponsor). Everything else on
+    `plan.filters` — especially request hard constraints like `drug_name` — must still apply,
+    or `meta.filters_applied` and the upstream query disagree.
+    """
+    merged = base.model_dump()
+    for field_name in StudyFilter.model_fields:
+        overlay_value = getattr(overlay, field_name)
+        if field_name in ("phase", "status"):
+            if overlay_value:
+                merged[field_name] = overlay_value
+        elif overlay_value is not None:
+            merged[field_name] = overlay_value
+    return StudyFilter.model_validate(merged)
+
+
 def enforce_hard_constraints(
     plan: AnalysisPlan, req: AnalyzeRequest
 ) -> tuple[AnalysisPlan, list[str]]:
@@ -306,9 +388,9 @@ def enforce_hard_constraints(
     the model is not allowed to contradict them. Runs on every plan from every planner, so an
     LLM that ignores `drug_name` cannot change which studies are counted.
 
-    `series[].filters` are left alone. A series overlay exists precisely to vary one field
-    across series: a two-sponsor comparison would be flattened into one series if the
-    request's `sponsor` were stamped onto both.
+    `series[].filters` are left alone here; at aggregate time each series is merged with
+    `plan.filters` via `overlay_filters`, so shared hard constraints AND into every series
+    while series-local overlays (the varied field) still win.
 
     Returns the plan and the overrides it made, for `meta.assumptions`.
     """

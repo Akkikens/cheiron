@@ -35,6 +35,7 @@ from app.ctg.vocab import Vocabulary
 from app.engine.dimensions import REGISTRY
 from app.models.plan import AnalysisPlan
 from app.models.request import AnalyzeRequest
+from app.models.response import PlannerName
 from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
 from app.planner.validate import validate_plan
@@ -45,6 +46,19 @@ MAX_ATTEMPTS: Final = 3
 """One initial call plus at most two repairs. SPEC §3 and §7's model-call budget."""
 
 SCHEMA_NAME: Final = "analysis_plan"
+
+
+@dataclass(frozen=True)
+class CachedPlan:
+    """What the plan cache stores: the IR plus how it was obtained.
+
+    Caching only the plan erased `llm_repaired` on every hit, so provenance lied about
+    whether the model needed repair.
+    """
+
+    plan: AnalysisPlan
+    planner: PlannerName
+
 
 SYSTEM_PROMPT: Final = """\
 You translate a question about clinical trials into an AnalysisPlan. That is your entire job.
@@ -87,7 +101,7 @@ class LLMPlanner:
         completer: ChatCompleter,
         *,
         fallback: HeuristicPlanner | None = None,
-        cache: Cache[AnalysisPlan] | None = None,
+        cache: Cache[CachedPlan] | None = None,
         warnings: list[str] | None = None,
     ) -> None:
         self._complete = completer
@@ -105,7 +119,7 @@ class LLMPlanner:
         if self._cache is not None:
             cached = self._cache.get(key)
             if cached is not None:
-                return PlanResult(plan=cached, planner="llm", attempts=0)
+                return PlanResult(plan=cached.plan, planner=cached.planner, attempts=0)
 
         schema = AnalysisPlan.json_schema_strict()
         messages: list[dict[str, str]] = [
@@ -127,11 +141,12 @@ class LLMPlanner:
 
             result = _parse(raw, vocab)
             if result.plan is not None:
+                planner: PlannerName = "llm" if attempt == 1 else "llm_repaired"
                 if self._cache is not None:
-                    self._cache.set(key, result.plan)
+                    self._cache.set(key, CachedPlan(plan=result.plan, planner=planner))
                 return PlanResult(
                     plan=result.plan,
-                    planner="llm" if attempt == 1 else "llm_repaired",
+                    planner=planner,
                     attempts=attempt,
                 )
 

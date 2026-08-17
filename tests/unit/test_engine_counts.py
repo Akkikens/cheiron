@@ -579,6 +579,10 @@ async def test_too_many_buckets_are_clamped_and_the_clamp_is_reported(settings: 
     bucketset = await counts.run(plan, dim, ctx, params=pre.params, total=pre.total)
 
     assert len(bucketset.buckets) == 3
+    # Survivors are the top three by count; axis order stays the clinical sort_order.
+    assert {bucket.key for bucket in bucketset.buckets} == {"PHASE1", "PHASE2", "PHASE3"}
+    assert [bucket.key for bucket in bucketset.buckets] == ["PHASE1", "PHASE2", "PHASE3"]
+    assert any("top 3 by count" in warning for warning in bucketset.warnings)
     assert any("max_buckets is 3" in warning for warning in bucketset.warnings)
 
 

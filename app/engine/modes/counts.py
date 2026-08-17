@@ -61,15 +61,8 @@ async def run(
     warnings: list[str] = []
 
     max_buckets = ctx.options.max_buckets
-    complete = len(keys) <= max_buckets
-    if len(keys) > max_buckets:
-        warnings.append(
-            f"{dim.key} has {len(keys)} buckets; showing the first {max_buckets} because "
-            f"options.max_buckets is {max_buckets}."
-        )
-        keys = keys[:max_buckets]
-
-    # Counts: one per bucket, +1 for MISSING, +1 for the post-wave timestamp recheck.
+    # Count every live key, then keep the top `max_buckets` by value. Truncating by display
+    # order before the fan-out kept rare early enum values and dropped high-count ones.
     count_cost = len(keys) + 2
     cite_fetches, cite_warnings = plan_citation_budget(
         ctx, bucket_count=len(keys), count_cost=count_cost
@@ -82,19 +75,19 @@ async def run(
     per_datum = ctx.options.citations_per_datum if cite_fetches else 0
 
     # Citation coroutines are scheduled alongside the counts so they share the wave, not a
-    # second round trip after it. Only the first `cite_fetches` buckets get a fetch; the rest
-    # are the ones cut when the budget was tight.
+    # second round trip after it. Sized for the post-truncation chart; the kept set is not
+    # known until counts land, so citations attach by key after ranking.
     cite_coros: list[Coroutine[Any, Any, tuple[list[Citation], str]]] = []
-    for index, (_, predicate) in enumerate(predicates):
+    cite_keys: list[str] = []
+    for index, (key, predicate) in enumerate(predicates):
         if index < cite_fetches:
+            cite_keys.append(key)
             cite_coros.append(
                 sample_citations(
                     predicate,
                     dim,
                     per_datum,
                     ctx,
-                    # Contributing is unknown until counts land; size the page to `n` and
-                    # rebuild the note with the real total below.
                     contributing=per_datum,
                     base_params=params,
                 )
@@ -104,10 +97,8 @@ async def run(
         ctx.client.count(with_predicate(params, predicate)) for _, predicate in predicates
     ] + [ctx.client.count(with_predicate(params, Essie.missing(dim.area)))]
 
-    # Counts fail-all; citations fail soft. Run them as two gathers in parallel so a citation
-    # exception cannot cancel a count, and a count exception still cancels everything.
     counts_task = asyncio.create_task(_gather_or_fail(count_coros))
-    cites_task = asyncio.create_task(_gather_citations(cite_coros, keys[:cite_fetches], warnings))
+    cites_task = asyncio.create_task(_gather_citations(cite_coros, cite_keys, warnings))
     counts, citation_results = await asyncio.gather(counts_task, cites_task)
 
     *bucket_counts, unclassified = counts
@@ -117,18 +108,44 @@ async def run(
     if cite_fetches:
         ctx.assumptions.append(ORDERING_ASSUMPTION)
 
-    buckets: list[Bucket] = []
-    for index, ((key, _), count) in enumerate(
+    citations_by_key = {
+        key: citation_results[index]
+        for index, key in enumerate(cite_keys)
+        if index < len(citation_results)
+    }
+
+    ranked = sorted(
         zip(predicates, bucket_counts, strict=True),
-    ):
+        key=lambda item: (-item[1], item[0][0]),
+    )
+    complete = len(ranked) <= max_buckets
+    if not complete:
+        warnings.append(
+            f"{dim.key} has {len(ranked)} buckets; showing the top {max_buckets} by count "
+            f"because options.max_buckets is {max_buckets}."
+        )
+        kept = {key for (key, _), _ in ranked[:max_buckets]}
+        # Keep clinical/chronological display order among the survivors — top-by-count only
+        # decides *which* buckets survive, not the axis order.
+        by_key = {
+            key: (predicate, count)
+            for (key, predicate), count in zip(predicates, bucket_counts, strict=True)
+        }
+        selected = [(key, by_key[key][0], by_key[key][1]) for key in keys if key in kept]
+    else:
+        selected = [
+            (key, predicate, count)
+            for (key, predicate), count in zip(predicates, bucket_counts, strict=True)
+        ]
+
+    buckets: list[Bucket] = []
+    for key, _, count in selected:
         citations: list[Citation] = []
         note: str | None = None
-        if index < len(citation_results) and count > 0:
-            raw_citations, _ = citation_results[index]
+        if key in citations_by_key and count > 0:
+            raw_citations, _ = citations_by_key[key]
             citations = raw_citations[: min(per_datum, int(count))]
             note = citation_note(len(citations), int(count)) if citations else None
-        elif index < len(citation_results) and count == 0:
-            citations, note = [], None
 
         buckets.append(
             Bucket(

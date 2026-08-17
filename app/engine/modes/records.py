@@ -105,6 +105,11 @@ def aggregate(
                 f"Enrollment winsorized at the 99th percentile ({clamp_value:,}); "
                 f"{n_clamped:,} studies were clamped. Raw enrollment is never plotted."
             )
+        if not dim.partition:
+            assumptions.append(
+                f"Enrollment is attributed to every {dim.key} value a study carries; "
+                f"the same participants may appear in more than one bucket."
+            )
 
     counts: Counter[str] = Counter()
     metric_values: dict[str, list[float]] = {}
@@ -138,8 +143,9 @@ def aggregate(
     complete = len(ordered_keys) <= ctx.options.max_buckets
     if len(ordered_keys) > ctx.options.max_buckets:
         warnings.append(
-            f"{dim.key} has {len(ordered_keys)} buckets; showing the first "
-            f"{ctx.options.max_buckets} because options.max_buckets is {ctx.options.max_buckets}."
+            f"{dim.key} has {len(ordered_keys)} buckets; showing the top "
+            f"{ctx.options.max_buckets} by count because options.max_buckets is "
+            f"{ctx.options.max_buckets}."
         )
         ordered_keys = ordered_keys[: ctx.options.max_buckets]
 
@@ -311,6 +317,30 @@ def _safe_nct(study: Mapping[str, Any]) -> str | None:
         return nct_id_of(study)
     except KeyError:
         return None
+
+
+def enrollment_crosstab_unplannable() -> Any:
+    """Enrollment x secondary_group_by would label study counts as participants.
+
+    The cross-tab tallies studies per cell; writing those into `enrollment_sum` /
+    `enrollment_median` is the same lie the comparison path already refuses.
+    """
+    from app.errors import CheironError, ErrorCode
+
+    return CheironError(
+        ErrorCode.UNPLANNABLE_QUERY,
+        "An enrollment metric cannot be broken down by a secondary dimension: the cross-tab "
+        "counts studies per cell, not participants, and labelling those counts as enrollment "
+        "would misrepresent the data.",
+        details=[
+            {
+                "suggestion": (
+                    "Drop secondary_group_by, or use metric study_count for a two-dimension "
+                    "breakdown."
+                ),
+            }
+        ],
+    )
 
 
 def enrollment_comparison_unplannable(threshold: int) -> Any:

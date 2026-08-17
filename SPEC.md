@@ -214,6 +214,11 @@ Rules that make these trustworthy:
   "interpretation": "Distribution of pembrolizumab trials across phases.",
   "planner": "llm" ,                     // "llm" | "llm_repaired" | "heuristic_fallback"
   "filters_applied": { "intervention": "Pembrolizumab" },
+  // On a comparison, one entry per series instead, each the base filters with that series'
+  // overlay applied:
+  //   "filters_applied": { "series": [
+  //     { "label": "Merck",  "intervention": "Pembrolizumab", "sponsor": "Merck Sharp & Dohme LLC" },
+  //     { "label": "Pfizer", "intervention": "Pembrolizumab", "sponsor": "Pfizer" } ] }
   "assumptions": [
     "Sponsor matched against lead sponsor only (query.lead), excluding collaborators."
   ],

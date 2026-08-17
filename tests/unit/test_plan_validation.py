@@ -549,6 +549,48 @@ def test_series_filters_are_left_alone() -> None:
     assert enforced.filters.sponsor == "Novartis"
 
 
+def test_overlay_filters_ands_shared_hard_constraints_into_each_series() -> None:
+    """drug_name on the request must reach every series query, while overlays still win."""
+    from app.planner.validate import overlay_filters
+
+    base = StudyFilter(intervention="Pembrolizumab", sponsor="Novartis")
+    merck = StudyFilter(sponsor="Merck Sharp & Dohme LLC")
+    pfizer = StudyFilter(sponsor="Pfizer")
+
+    assert overlay_filters(base, merck).intervention == "Pembrolizumab"
+    assert overlay_filters(base, merck).sponsor == "Merck Sharp & Dohme LLC"
+    assert overlay_filters(base, pfizer).sponsor == "Pfizer"
+
+
+def test_year_shaped_count_without_a_filter_bound_is_caught(vocab: Vocabulary) -> None:
+    plan = a_plan(interpretation="There were 2024 pembrolizumab trials in this set.")
+
+    message = only_error(plan, vocab)
+    assert "2024" in message
+
+
+def test_series_label_with_a_smuggled_count_is_caught(vocab: Vocabulary) -> None:
+    plan = a_plan(
+        intent=Intent.COMPARISON,
+        series=[
+            SeriesSpec(label="Merck (1,841)", filters=StudyFilter(sponsor="Merck")),
+            SeriesSpec(label="Pfizer", filters=StudyFilter(sponsor="Pfizer")),
+        ],
+        interpretation="Comparison of clinical trials by sponsor.",
+    )
+
+    assert any("1,841" in message for message in validate_plan(plan, vocab))
+
+
+def test_enrollment_with_secondary_group_by_is_refused(vocab: Vocabulary) -> None:
+    plan = a_plan(
+        metric=Metric.ENROLLMENT_SUM,
+        secondary_group_by=GroupBy(dimension="overall_status"),
+    )
+
+    assert any("secondary_group_by" in message for message in validate_plan(plan, vocab))
+
+
 def test_the_original_plan_is_not_mutated() -> None:
     plan = a_plan(filters=StudyFilter(intervention="aspirin"))
     request = AnalyzeRequest(query="trials by phase", drug_name="Pembrolizumab")

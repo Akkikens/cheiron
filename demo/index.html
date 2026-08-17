@@ -268,10 +268,10 @@
       <button data-q="Which interventions are studied together?" data-cond="glioblastoma" data-sy="2024" data-ey="2025">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g stroke="currentColor" stroke-width="1" fill="none"><path d="M3 3.5L11 7M11 7L4 11"/></g><g fill="currentColor"><circle cx="3" cy="3.5" r="1.9"/><circle cx="11.2" cy="7" r="1.6"/><circle cx="4" cy="11" r="1.5"/></g></svg>
         Co-occurrence network</button>
-      <button data-q="Are glioblastoma trials mostly run by industry or by universities?" data-cond="glioblastoma">
+      <button data-q="Are glioblastoma trials mostly run by industry or by universities?" data-cond="glioblastoma" data-needs-llm="1">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><text x="7" y="11" text-anchor="middle" font-size="11" font-family="var(--serif)" fill="currentColor">AI</text></svg>
         Free-form question <span style="color:var(--muted)">→ llm</span></button>
-      <button data-q="Tell me a joke about trials">
+      <button data-q="Tell me a joke about trials" data-needs-llm="1">
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="5.6" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 4v4M7 9.8v.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         A question it refuses</button>
     </div>
@@ -754,26 +754,38 @@ $('go').addEventListener('click', run);
 // this turns that reflex into the demo: bar chart, then trend, then map, then network, then the
 // question only the model can plan. The position is kept in sessionStorage so it advances per
 // tab and resets when the tab is closed, rather than being random and repeating itself.
-function openingExample() {
+//
+// When the deployment runs without a model, skip the LLM-only and refuse examples so first
+// paint is a chart rather than unplannable_query.
+async function openingExample() {
   const buttons = [...document.querySelectorAll('.examples button')].filter((b) => b.dataset.q);
   if (!buttons.length) return null;
+  let llmOn = true;
+  try {
+    const health = await fetch('/health').then((r) => r.json());
+    llmOn = health.llm_enabled !== false;
+  } catch (_) { /* keep all examples if health is unreachable */ }
+  const pool = llmOn ? buttons : buttons.filter((b) => !b.dataset.needsLlm);
+  if (!pool.length) return buttons[0];
   const key = 'cheiron:opening';
   const seen = Number(sessionStorage.getItem(key) || '-1');
-  const next = (seen + 1) % buttons.length;
+  const next = (seen + 1) % pool.length;
   sessionStorage.setItem(key, String(next));
-  return buttons[next];
+  return pool[next];
 }
 
 if (typeof window !== 'undefined' && typeof fetch === 'function') {
-  const opening = openingExample();
-  if (opening) {
-    $('q').value = opening.dataset.q;
-    $('drug').value = opening.dataset.drug ?? '';
-    $('cond').value = opening.dataset.cond ?? '';
-    $('sy').value = opening.dataset.sy ?? '';
-    $('ey').value = opening.dataset.ey ?? '';
-  }
-  run();
+  (async () => {
+    const opening = await openingExample();
+    if (opening) {
+      $('q').value = opening.dataset.q;
+      $('drug').value = opening.dataset.drug ?? '';
+      $('cond').value = opening.dataset.cond ?? '';
+      $('sy').value = opening.dataset.sy ?? '';
+      $('ey').value = opening.dataset.ey ?? '';
+    }
+    run();
+  })();
 
   // Developers open the console. This is the one claim worth making there, and it is checkable.
   console.log(

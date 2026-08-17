@@ -157,7 +157,7 @@ prevent:
 |---|---|
 | `interpretation` | What was computed, in words: never a result |
 | `planner` | `llm` \| `llm_repaired` \| `heuristic_fallback` |
-| `filters_applied` | The filters that actually ran |
+| `filters_applied` | The filters that actually ran. On a comparison this is `{"series": [{"label", ...filters}]}`, one entry per series, each showing the base filters with that series' overlay applied |
 | `assumptions` | Choices a reader would otherwise have to guess at (§5) |
 | `warnings` | Every degradation, rollup, sample, and downgrade, with numbers |
 | `total_matching_studies` | Exact count for the base filter |

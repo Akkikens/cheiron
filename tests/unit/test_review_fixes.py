@@ -926,3 +926,50 @@ def test_the_deterministic_planner_discloses_an_unapplied_subject() -> None:
     )
     assert _unapplied_subject_warning(filtered.plan, filtered) == []
     assert _unapplied_subject_warning(from_model.plan, from_model) == []
+
+
+def test_spend_resets_for_a_timestamp_retry() -> None:
+    """SPEC §7's whole-group-by retry must not inherit the failed attempt's spend."""
+    from app.engine.context import RunContext
+    from app.models.request import Options
+
+    ctx = RunContext(
+        client=None,  # type: ignore[arg-type]
+        vocab=None,  # type: ignore[arg-type]
+        options=Options(),
+        deadline=1e18,
+        upstream_budget=40,
+        data_timestamp="t0",
+        budget_ms=10_000,
+    )
+    ctx.spend(12, "a failed fan-out")
+    assert ctx.spent == 12
+    ctx.reset_spend(1)  # preflight kept
+    assert ctx.spent == 1
+    ctx.spend(12, "the retry")
+    assert ctx.spent == 13
+
+
+def test_trend_plus_secondary_is_a_crosstab_not_a_time_series() -> None:
+    from app.engine.bucketset import Bucket, BucketSet
+    from app.engine.dimensions import REGISTRY
+    from app.models.plan import AnalysisPlan, ChartType, GroupBy, Intent, StudyFilter
+    from app.models.request import Options
+    from app.render.registry import select_chart
+
+    plan = AnalysisPlan(
+        intent=Intent.TREND,
+        filters=StudyFilter(),
+        group_by=GroupBy(dimension="start_year"),
+        secondary_group_by=GroupBy(dimension="phase"),
+        interpretation="Annual counts of clinical trials by phase.",
+    )
+    bucketset = BucketSet(
+        buckets=[Bucket(key="2020", label="2020", value=10.0, exactness="exact")],
+        total=10,
+        unclassified=0,
+        semantics="partition",
+        mode="complete_records",
+    )
+    chosen, _ = select_chart(plan, bucketset, REGISTRY["start_year"], Options())
+    assert chosen is ChartType.GROUPED_BAR_CHART  # phase is overlapping → grouped

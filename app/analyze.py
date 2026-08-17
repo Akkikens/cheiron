@@ -41,6 +41,7 @@ from app.engine.preflight import (
     AggregationModeName,
     Preflight,
     preflight,
+    select_mode,
     unimplemented_mode,
 )
 from app.errors import CheironError, ErrorCode
@@ -54,8 +55,8 @@ from app.models.response import (
 )
 from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
-from app.planner.llm import ChatCompleter, LLMPlanner
-from app.planner.validate import enforce_hard_constraints, validate_plan
+from app.planner.llm import CachedPlan, ChatCompleter, LLMPlanner
+from app.planner.validate import enforce_hard_constraints, overlay_filters, validate_plan
 from app.render.encode import (
     plotted_axis_keys,
     plotted_crosstab_keys,
@@ -73,7 +74,7 @@ async def analyze(
     transport: CTGTransport,
     vocabulary_cache: VocabularyCache,
     settings: Settings,
-    plan_cache: Cache[AnalysisPlan] | None = None,
+    plan_cache: Cache[CachedPlan] | None = None,
     result_cache: Cache[AnalyzeResponse] | None = None,
     completer: ChatCompleter | None = None,
 ) -> AnalyzeResponse:
@@ -147,6 +148,11 @@ async def analyze(
             # known before spending N preflights.
             raise records.enrollment_comparison_unplannable(settings.record_mode_threshold)
 
+        if plan.metric is not Metric.STUDY_COUNT and plan.secondary_group_by is not None:
+            # Cross-tabs tally studies per cell; writing those into enrollment_* is the same
+            # class of lie as the comparison path above. validate_plan also refuses this.
+            raise records.enrollment_crosstab_unplannable()
+
         if len(plan.series) > 1:
             # A comparison is N independent analyses. Each series gets its own preflight, mode
             # selection, and fan-out, because each has its own filters and therefore its own
@@ -162,14 +168,16 @@ async def analyze(
         if pre is None:
             pass
         elif pre.total == 0:
-            # A4: empty result, never a fabricated row. Skip mode selection entirely: a zero
-            # total would otherwise pick complete_records and page an empty set.
+            # A4: empty result, never a fabricated row. Mode still follows the threshold table
+            # so intent=network keeps complete_records (and an empty network shape) rather than
+            # a false A7 downgrade warning about server_counts.
+            empty_mode = select_mode(0, dim, settings.record_mode_threshold)
             bucketset = BucketSet(
                 buckets=[],
                 total=0,
                 unclassified=0,
                 semantics="partition" if dim.partition else "overlapping",
-                mode="server_counts",
+                mode=empty_mode,
             )
         else:
             if plan.metric is not Metric.STUDY_COUNT and pre.mode != "complete_records":
@@ -324,7 +332,7 @@ async def _plan(
     vocab: Vocabulary,
     *,
     settings: Settings,
-    plan_cache: Cache[AnalysisPlan] | None,
+    plan_cache: Cache[CachedPlan] | None,
     completer: ChatCompleter | None,
     warnings: list[str],
 ) -> PlanResult:
@@ -350,7 +358,9 @@ async def _run_series(
     """One complete analysis per series, each with its own preflight and mode."""
 
     async def aggregate_one(filters: StudyFilter) -> BucketSet:
-        series_plan = plan.model_copy(update={"filters": filters, "series": []})
+        # Hard constraints live on plan.filters; series overlays win for the varied field.
+        effective = overlay_filters(plan.filters, filters)
+        series_plan = plan.model_copy(update={"filters": effective, "series": []})
         pre = await preflight(series_plan, dim, ctx, threshold=settings.record_mode_threshold)
         if pre.total == 0:
             return BucketSet(
@@ -358,7 +368,7 @@ async def _run_series(
                 total=0,
                 unclassified=0,
                 semantics="partition" if dim.partition else "overlapping",
-                mode="server_counts",
+                mode=select_mode(0, dim, settings.record_mode_threshold),
             )
         bucketset, _ = await _aggregate(
             series_plan,
@@ -470,10 +480,15 @@ async def _once_more_on_new_data[T](ctx: RunContext, run: Callable[[], Awaitable
     The re-capture between attempts is load-bearing: the retry runs against the dataset that
     *replaced* the one we started on, so without it the second attempt compares against a stale
     timestamp and fails by construction.
+
+    Spend is snapshotted and restored on retry: the failed attempt already charged the ledger,
+    and without a refund the retry's next `spend` almost always raises BudgetExhausted.
     """
+    spent_before = ctx.spent
     try:
         return await run()
     except DataTimestampChanged:
+        ctx.reset_spend(spent_before)
         ctx.data_timestamp = await ctx.observed_data_timestamp()
 
     try:
@@ -487,5 +502,20 @@ async def _once_more_on_new_data[T](ctx: RunContext, run: Callable[[], Awaitable
 
 
 def _filters_applied(plan: AnalysisPlan) -> dict[str, Any]:
-    dumped = plan.filters.model_dump(exclude_none=True)
+    """What was actually queried. For comparisons, each series' effective overlay."""
+    if plan.series:
+        return {
+            "series": [
+                {
+                    "label": spec.label,
+                    **_dump_filters(overlay_filters(plan.filters, spec.filters)),
+                }
+                for spec in plan.series
+            ]
+        }
+    return _dump_filters(plan.filters)
+
+
+def _dump_filters(filters: StudyFilter) -> dict[str, Any]:
+    dumped = filters.model_dump(exclude_none=True)
     return {key: value for key, value in dumped.items() if value != []}

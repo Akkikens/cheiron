@@ -61,9 +61,10 @@ def _primary(
     # SPEC §6.1 table, in order. Scatter and histogram became reachable when `enrollment_count`
     # joined the registry; the sweep test asserts they are still never returned for the intents
     # that are not theirs.
-
-    if plan.intent is Intent.TREND and is_temporal(dim):
-        return ChartType.TIME_SERIES
+    #
+    # `secondary_group_by` must beat `trend`: otherwise a year x phase plan is typed as
+    # `time_series` while the data is a crosstab, and a renderer that ignores series draws one
+    # fabricated polyline through interleaved phase rows.
 
     if plan.secondary_group_by is not None:
         # The **secondary** dimension decides, not the primary. Segments within one bar are
@@ -76,6 +77,9 @@ def _primary(
         if secondary.partition:
             return ChartType.STACKED_BAR_CHART
         return ChartType.GROUPED_BAR_CHART
+
+    if plan.intent is Intent.TREND and is_temporal(dim):
+        return ChartType.TIME_SERIES
 
     if plan.intent is Intent.COMPARISON and 2 <= series_count <= 4:
         return ChartType.GROUPED_BAR_CHART
