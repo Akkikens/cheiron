@@ -112,7 +112,11 @@ def year_span(filters: StudyFilter) -> tuple[date, date] | None:
         return None
 
     start_year = filters.start_year if filters.start_year is not None else 1900
-    end_year = filters.end_year if filters.end_year is not None else date.today().year
+    # An open end defaults to this year, but never earlier than the start: a request for
+    # `start_year=2030` with no end is well-formed and asks about planned trials, and inverting
+    # the range would raise out of `Essie.date_range` and surface as a 500 on a valid question.
+    default_end = max(date.today().year, start_year)
+    end_year = filters.end_year if filters.end_year is not None else default_end
     return date(start_year, 1, 1), date(end_year, 12, 31)
 
 

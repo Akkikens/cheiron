@@ -20,7 +20,7 @@ from typing import Literal
 
 from app.engine.basefilter import base_filter
 from app.engine.context import RunContext
-from app.engine.dimensions import Dimension
+from app.engine.dimensions import Dimension, is_temporal
 from app.errors import CheironError, ErrorCode
 from app.models.plan import AnalysisPlan
 
@@ -37,10 +37,18 @@ class Preflight:
 
 
 def select_mode(total: int, dim: Dimension, threshold: int) -> AggregationModeName:
-    """SPEC §5.2's table, as one expression with no hidden fourth case."""
+    """SPEC §5.2's table, as one expression with no hidden fourth case.
+
+    "Closed vocabulary" is **not** the same as "has an enum". `start_year` is closed — SPEC §5.1
+    calls it a derived range — but carries `enum_name=None` because its values come from a date
+    range rather than `/studies/enums`. Testing `enum_name is not None` alone routed every trend
+    question over the threshold into the sampling mode, where year labels were confirmed with
+    `COVERAGE[FullMatch]"2021"` instead of `RANGE[2021-01-01,2021-12-31]` — confirming to zero,
+    dropping every bucket, and returning an empty chart for the most common question there is.
+    """
     if total <= threshold:
         return "complete_records"
-    if dim.enum_name is not None:
+    if dim.enum_name is not None or is_temporal(dim):
         return "server_counts"
     return "sampled_then_confirmed"
 

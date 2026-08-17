@@ -92,7 +92,9 @@ def aggregate(
     ctx: RunContext,
 ) -> BucketSet:
     """Group `studies` by `dim` into a BucketSet. List dimensions contribute to every value."""
-    warnings: list[str] = list(ctx.warnings)
+    # Starts empty, like every other mode: `analyze` concatenates ctx.warnings and
+    # bucketset.warnings, so seeding from ctx here printed the fetch-drift warning twice.
+    warnings: list[str] = []
     assumptions: list[str] = []
 
     enrollments_by_nct = _enrollment_map(studies)

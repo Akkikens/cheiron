@@ -16,11 +16,39 @@ from app.engine.dimensions import Dimension
 from app.models.response import Coverage
 
 
-def build_coverage(bucketset: BucketSet, dim: Dimension) -> tuple[Coverage, list[str]]:
-    """Return the coverage block and any warnings the reconciliation turned up."""
+def build_coverage(
+    bucketset: BucketSet, dim: Dimension, *, counts_studies: bool = True
+) -> tuple[Coverage, list[str]]:
+    """Return the coverage block and any warnings the reconciliation turned up.
+
+    `counts_studies` is false for enrollment metrics, where `bucket_sum` is a sum of *people*
+    while `total` and `unclassified` are studies. Reconciling those is not just meaningless, it
+    is actively misleading: every enrollment query used to emit "1,204,331 bucket counts plus 12
+    unclassified does not equal 1,840 - treat the difference as unexplained", which reads as a
+    data fault rather than as two different units.
+    """
     warnings: list[str] = []
     memberships = bucketset.bucket_sum
     with_value = bucketset.total - bucketset.unclassified
+
+    if not counts_studies:
+        return (
+            Coverage(
+                aggregation_mode=bucketset.mode,
+                groupby_semantics="partition" if dim.partition else "overlapping",
+                bucket_sum=memberships,
+                unclassified_count=bucketset.unclassified,
+                overlap_note=(
+                    f"Bucket values are enrollment totals, not study counts, so they are not "
+                    f"comparable with total_matching_studies ({bucketset.total:,} studies). "
+                    f"{bucketset.unclassified:,} studies have no value for {dim.key} and are "
+                    f"excluded."
+                ),
+                sample_size=bucketset.sample_size,
+                sample_coverage=bucketset.sample_coverage,
+            ),
+            warnings,
+        )
 
     if dim.partition:
         overlap_note = None

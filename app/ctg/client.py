@@ -214,6 +214,11 @@ class CTGTransport:
             self._breaker.check()
             await self._bucket.acquire()
 
+            # Reset per attempt: on a transport failure there is no response to read a
+            # Retry-After from, and carrying the previous attempt's response would be worse
+            # than having none.
+            retry_after: int | None = None
+
             try:
                 async with self._semaphore:
                     response = await self._http.get(
@@ -247,10 +252,20 @@ class CTGTransport:
                     raise self._client_error(response, params)
 
                 self._breaker.record_failure()
-                last_error = self._server_error(response)
+                if response.status_code == 429:
+                    retry_after = _retry_after_seconds(response)
+                    last_error = self._rate_limited(response)
+                else:
+                    last_error = self._server_error(response)
 
             if attempt < self._attempts:
-                await self._sleep(self._backoff(attempt))
+                # A 429 is upstream telling us the rate, so honour Retry-After rather than
+                # racing back in under the jittered backoff. This module exists to be a good
+                # citizen of a public NIH service; ignoring the one explicit signal it sends
+                # would be the least courteous thing in it.
+                await self._sleep(
+                    retry_after if retry_after is not None else self._backoff(attempt)
+                )
 
         assert last_error is not None
         raise last_error
@@ -284,6 +299,17 @@ class CTGTransport:
                     "filter.advanced": predicate,
                 }
             ],
+        )
+
+    def _rate_limited(self, response: httpx.Response) -> CheironError:
+        """SPEC §4.5's `rate_limited`, carrying upstream's own `Retry-After` when it sends one."""
+        retry_after = _retry_after_seconds(response)
+        return CheironError(
+            ErrorCode.RATE_LIMITED,
+            "ClinicalTrials.gov is rate limiting this client"
+            + (f"; retry after {retry_after}s." if retry_after is not None else "."),
+            retry_after_seconds=retry_after,
+            details=[{"upstream_status": 429}],
         )
 
     def _server_error(self, response: httpx.Response) -> CheironError:
@@ -423,3 +449,14 @@ def _parse_enums(response: httpx.Response) -> dict[str, list[str]]:
     """`/studies/enums` is a JSON array of `{type, values:[{value, legacyValue}], pieces}`."""
     payload = response.json()
     return {entry["type"]: [value["value"] for value in entry["values"]] for entry in payload}
+
+
+def _retry_after_seconds(response: httpx.Response) -> int | None:
+    """`Retry-After` as whole seconds. Header-date form is not parsed; absent beats guessed."""
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(0, int(float(raw.strip())))
+    except ValueError:
+        return None

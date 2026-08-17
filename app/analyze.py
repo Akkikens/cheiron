@@ -12,10 +12,10 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from app.cache import Cache, result_cache_key
+from app.cache import Cache, options_cache_key, result_cache_key
 from app.config import Settings
 from app.ctg.client import CTGClient, CTGTransport
-from app.ctg.vocab import Vocabulary, VocabularyCache
+from app.ctg.vocab import MISSING, Vocabulary, VocabularyCache
 from app.engine.bucketset import BucketSet
 from app.engine.context import (
     BudgetExhausted,
@@ -27,9 +27,24 @@ from app.engine.context import (
 from app.engine.coverage import build_coverage
 from app.engine.dimensions import Dimension, resolve
 from app.engine.modes import counts, network, records, sampled
-from app.engine.preflight import AggregationModeName, preflight, unimplemented_mode
+from app.engine.multi import (
+    MAX_SERIES,
+    CrossCell,
+    Panel,
+    crosstab_by_counts,
+    crosstab_from_records,
+    merge_panels,
+    run_panels,
+    too_many_series,
+)
+from app.engine.preflight import (
+    AggregationModeName,
+    Preflight,
+    preflight,
+    unimplemented_mode,
+)
 from app.errors import CheironError, ErrorCode
-from app.models.plan import AnalysisPlan, ChartType, Intent, Metric
+from app.models.plan import AnalysisPlan, ChartType, Intent, Metric, StudyFilter
 from app.models.request import AnalyzeRequest
 from app.models.response import (
     AnalyzeResponse,
@@ -41,7 +56,7 @@ from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
 from app.planner.llm import ChatCompleter, LLMPlanner
 from app.planner.validate import enforce_hard_constraints, validate_plan
-from app.render.encode import render
+from app.render.encode import render, render_crosstab, render_panels
 from app.render.registry import select_chart
 
 
@@ -89,7 +104,9 @@ async def analyze(
     # SPEC §7: keyed on the plan *and* the dataset revision, so an entry cannot outlive the data
     # it describes. `retrieved_at` on a hit is deliberately the original retrieval time — these
     # numbers were fetched then, and restamping them with "now" would overstate their freshness.
-    cache_key = result_cache_key(plan.normalized_key(), version.data_timestamp)
+    cache_key = result_cache_key(
+        plan.normalized_key(), version.data_timestamp, options_cache_key(request.options)
+    )
     if result_cache is not None:
         hit = result_cache.get(cache_key)
         if hit is not None:
@@ -105,11 +122,27 @@ async def analyze(
     ctx.assumptions.extend(assumptions)
 
     studies: list[dict[str, Any]] | None = None
+    panels: list[Panel] | None = None
+    cells: list[CrossCell] | None = None
     try:
-        pre = await preflight(plan, dim, ctx, threshold=settings.record_mode_threshold)
-        ctx.assumptions.extend(pre.assumptions)
+        if len(plan.series) > MAX_SERIES:
+            raise too_many_series(len(plan.series))
 
-        if pre.total == 0:
+        if len(plan.series) > 1:
+            # A comparison is N independent analyses. Each series gets its own preflight, mode
+            # selection, and fan-out, because each has its own filters and therefore its own
+            # result size — one series can be small enough for record mode while another is not.
+            panels = await _run_series(plan, dim, ctx, settings=settings)
+            bucketset, merge_warnings = merge_panels(panels, dim)
+            ctx.warnings.extend(merge_warnings)
+            pre = None
+        else:
+            pre = await preflight(plan, dim, ctx, threshold=settings.record_mode_threshold)
+            ctx.assumptions.extend(pre.assumptions)
+
+        if pre is None:
+            pass
+        elif pre.total == 0:
             # A4: empty result, never a fabricated row. Skip mode selection entirely — a zero
             # total would otherwise pick complete_records and page an empty set.
             bucketset = BucketSet(
@@ -131,10 +164,17 @@ async def analyze(
                 pre.mode,
                 sample_pages=settings.sample_pages,
             )
+
+            if plan.secondary_group_by is not None:
+                cells = await _crosstab(
+                    plan, dim, ctx, pre=pre, bucketset=bucketset, studies=studies
+                )
     except BudgetExhausted as exc:
         raise budget_error(exc) from exc
 
-    coverage, coverage_warnings = build_coverage(bucketset, dim)
+    coverage, coverage_warnings = build_coverage(
+        bucketset, dim, counts_studies=plan.metric is Metric.STUDY_COUNT
+    )
     chart_type, chart_warnings = select_chart(plan, bucketset, dim, request.options)
 
     if (
@@ -143,6 +183,18 @@ async def analyze(
         and studies is not None
     ):
         visualization, render_warnings = network.build(studies, plan, ctx)
+    elif panels is not None:
+        visualization, render_warnings = render_panels(plan, panels, bucketset, dim, ctx)
+    elif cells is not None and plan.secondary_group_by is not None:
+        visualization, render_warnings = render_crosstab(
+            plan,
+            cells,
+            bucketset,
+            dim,
+            resolve(plan.secondary_group_by.dimension),
+            ctx,
+            chart_type,
+        )
     else:
         visualization, render_warnings = render(plan, bucketset, chart_type, dim, ctx)
 
@@ -203,6 +255,93 @@ async def _plan(
         return await HeuristicPlanner().plan(request, vocab)
 
     return await LLMPlanner(completer, cache=plan_cache, warnings=warnings).plan(request, vocab)
+
+
+async def _run_series(
+    plan: AnalysisPlan,
+    dim: Dimension,
+    ctx: RunContext,
+    *,
+    settings: Settings,
+) -> list[Panel]:
+    """One complete analysis per series, each with its own preflight and mode."""
+
+    async def aggregate_one(filters: StudyFilter) -> BucketSet:
+        series_plan = plan.model_copy(update={"filters": filters, "series": []})
+        pre = await preflight(series_plan, dim, ctx, threshold=settings.record_mode_threshold)
+        if pre.total == 0:
+            return BucketSet(
+                buckets=[],
+                total=0,
+                unclassified=0,
+                semantics="partition" if dim.partition else "overlapping",
+                mode="server_counts",
+            )
+        bucketset, _ = await _aggregate(
+            series_plan,
+            dim,
+            ctx,
+            pre.params,
+            pre.total,
+            pre.mode,
+            sample_pages=settings.sample_pages,
+        )
+        return bucketset
+
+    return await run_panels(aggregate_one, plan, ctx)
+
+
+async def _crosstab(
+    plan: AnalysisPlan,
+    dim: Dimension,
+    ctx: RunContext,
+    *,
+    pre: Preflight,
+    bucketset: BucketSet,
+    studies: list[dict[str, Any]] | None,
+) -> list[CrossCell]:
+    """Compute the secondary breakdown, free from records or one count per cell.
+
+    In `complete_records` mode the studies are already in memory, so the cross-tab costs nothing;
+    everywhere else it is a product of two bucket lists and is refused when it does not fit the
+    budget, rather than truncated into a chart whose segments do not add up.
+    """
+    assert plan.secondary_group_by is not None
+    secondary = resolve(plan.secondary_group_by.dimension)
+
+    if studies is not None:
+        return crosstab_from_records(studies, dim, secondary)
+
+    if secondary.enum_name is None or dim.enum_name is None:
+        raise CheironError(
+            ErrorCode.UNPLANNABLE_QUERY,
+            f"A {dim.key} by {secondary.key} breakdown needs both dimensions to have closed "
+            f"vocabularies at this result size; open-vocabulary labels would have to be sampled, "
+            f"and a sampled cross-tab cannot be confirmed cell by cell within the budget.",
+            details=[
+                {
+                    "suggestion": (
+                        "Narrow the filters so the record-mode threshold applies, or drop "
+                        "secondary_group_by."
+                    )
+                }
+            ],
+        )
+
+    primary_keys = [key for key in ctx.vocab.sort_order(dim.enum_name) if key != MISSING]
+    secondary_keys = [key for key in ctx.vocab.sort_order(secondary.enum_name) if key != MISSING]
+
+    return await crosstab_by_counts(
+        plan,
+        dim,
+        secondary,
+        ctx,
+        params=pre.params,
+        primary_keys=[key for key in primary_keys if key in set(ctx.vocab.values(dim.enum_name))],
+        secondary_keys=[
+            key for key in secondary_keys if key in set(ctx.vocab.values(secondary.enum_name))
+        ],
+    )
 
 
 async def _aggregate(

@@ -7,6 +7,7 @@ and the summed value; a bare omission would be `truncated: true` wearing a diffe
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
@@ -14,6 +15,7 @@ from app.ctg.vocab import Vocabulary
 from app.engine.bucketset import Bucket, BucketSet
 from app.engine.context import RunContext
 from app.engine.dimensions import Dimension
+from app.engine.multi import CrossCell, Panel
 from app.models.plan import AnalysisPlan, ChartType, Metric
 from app.models.response import Visualization
 
@@ -85,7 +87,13 @@ def render(
         )
         return (
             Visualization(
-                type=ChartType.TABLE if chart_type is not ChartType.KPI else ChartType.KPI,
+                # Keep the shape the caller asked for where the empty form is still valid; only
+                # the row-shaped charts collapse to a table. Returning TABLE with {nodes, edges}
+                # would fail the response model's own encoding check and turn a legitimate empty
+                # answer into a 500.
+                type=chart_type
+                if chart_type in (ChartType.KPI, ChartType.NETWORK_GRAPH)
+                else ChartType.TABLE,
                 title=_title(plan, dim),
                 subtitle=_subtitle(bucketset, ctx),
                 encoding=_empty_encoding(chart_type, dim),
@@ -101,15 +109,15 @@ def render(
 
     buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
     rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in buckets]
-    if chart_type is ChartType.GROUPED_BAR_CHART:
-        # Network A7 downgrade and comparison charts both need this channel; single-series
-        # paths get a constant so every row still satisfies SPEC §4.1.
-        default_series = plan.series[0].label if plan.series else "all"
+    if chart_type in (ChartType.GROUPED_BAR_CHART, ChartType.STACKED_BAR_CHART):
+        # Reached only when there is genuinely one series and no secondary dimension — the
+        # network A7 downgrade is the main case. Real comparisons and cross-tabs never arrive
+        # here; they go through `render_panels` / `render_crosstab`, which carry real breakdowns.
+        # A constant is honest for a single series and dishonest for several, which is why the
+        # multi-series paths are separate functions rather than a flag on this one.
+        channel = "series" if chart_type is ChartType.GROUPED_BAR_CHART else "stack"
         for row in rows:
-            row.setdefault("series", default_series)
-    if chart_type is ChartType.STACKED_BAR_CHART:
-        for row in rows:
-            row.setdefault("stack", "all")
+            row.setdefault(channel, "all")
     rows = _sort_rows(rows, dim, ctx.vocab, chart_type)
     rows = _other_last(rows, dim.key)
 
@@ -131,6 +139,135 @@ def render(
         ),
         warnings,
     )
+
+
+def render_panels(
+    plan: AnalysisPlan,
+    panels: Sequence[Panel],
+    merged: BucketSet,
+    dim: Dimension,
+    ctx: RunContext,
+) -> tuple[Visualization, list[str]]:
+    """A real comparison: one row per (series, bucket), each count from that series' own fan-out.
+
+    Every row carries the label of the series it was actually counted under. The previous
+    behaviour — one series' label stamped on the base filter's counts — is the failure this
+    function exists to make impossible.
+    """
+    warnings: list[str] = []
+    rows: list[dict[str, Any]] = []
+
+    for panel in panels:
+        if not panel.bucketset.buckets:
+            warnings.append(f"Series {panel.label!r} matched no studies and has no bars.")
+        for bucket in panel.bucketset.buckets:
+            row = _row(bucket, dim, plan.metric, ctx.vocab)
+            row["series"] = panel.label
+            rows.append(row)
+
+    rows = _sort_rows(rows, dim, ctx.vocab, ChartType.GROUPED_BAR_CHART)
+
+    annotations: list[dict[str, Any]] = [
+        {
+            "type": "series",
+            "text": "Each series is an independent query; counts are exact within a series.",
+            "series": [
+                {"label": panel.label, "total_matching_studies": panel.bucketset.total}
+                for panel in panels
+            ],
+        }
+    ]
+    if merged.semantics == "overlapping":
+        annotations.append({"type": "note", "text": "Buckets overlap; see meta.coverage"})
+
+    return (
+        Visualization(
+            type=ChartType.GROUPED_BAR_CHART,
+            title=f"{_title(plan, dim)} ({' vs '.join(panel.label for panel in panels)})",
+            subtitle=_subtitle(merged, ctx),
+            encoding=_encoding(ChartType.GROUPED_BAR_CHART, dim, plan.metric, ctx.vocab, rows),
+            data=rows,
+            annotations=annotations,
+        ),
+        warnings,
+    )
+
+
+def render_crosstab(
+    plan: AnalysisPlan,
+    cells: Sequence[CrossCell],
+    bucketset: BucketSet,
+    dim: Dimension,
+    secondary: Dimension,
+    ctx: RunContext,
+    chart_type: ChartType,
+) -> tuple[Visualization, list[str]]:
+    """A real cross-tab: one row per (primary, secondary) cell with its own count.
+
+    Stacking is only offered when the **secondary** dimension partitions (SPEC §6.1) — stacking
+    a multi-valued dimension implies segments that sum to the bar when they do not.
+    """
+    warnings: list[str] = []
+    channel = "stack" if chart_type is ChartType.STACKED_BAR_CHART else "series"
+
+    rows: list[dict[str, Any]] = []
+    for cell in cells:
+        rows.append(
+            {
+                dim.key: cell.primary,
+                f"{dim.key}_label": _label_for(dim, cell.primary, ctx.vocab),
+                channel: _label_for(secondary, cell.secondary, ctx.vocab),
+                f"{channel}_key": cell.secondary,
+                plan.metric.value: cell.value,
+                "exactness": "exact",
+            }
+        )
+
+    rows = _sort_rows(rows, dim, ctx.vocab, chart_type)
+
+    encoding = _encoding(chart_type, dim, plan.metric, ctx.vocab, rows)
+    encoding[channel] = {
+        "field": channel,
+        "type": "nominal",
+        "label": secondary.label,
+    }
+
+    annotations: list[dict[str, Any]] = [
+        {
+            "type": "crosstab",
+            "text": (
+                f"Each cell is an exact count of studies matching both the {dim.label.lower()} "
+                f"and the {secondary.label.lower()}."
+            ),
+            "cells": len(rows),
+        }
+    ]
+    if not secondary.partition:
+        annotations.append(
+            {
+                "type": "note",
+                "text": (
+                    f"{secondary.label} is multi-valued, so a study can appear in more than one "
+                    f"{channel}; segments do not sum to their bar."
+                ),
+            }
+        )
+
+    return (
+        Visualization(
+            type=chart_type,
+            title=f"{_title(plan, dim)} by {secondary.label}",
+            subtitle=_subtitle(bucketset, ctx),
+            encoding=encoding,
+            data=rows,
+            annotations=annotations,
+        ),
+        warnings,
+    )
+
+
+def _label_for(dim: Dimension, key: str, vocab: Vocabulary) -> str:
+    return key if dim.enum_name is None else vocab.label(dim.enum_name, key)
 
 
 def _maybe_rollup(

@@ -74,5 +74,21 @@ def plan_cache_key(question: str, structured: dict[str, Any]) -> str:
     return "|".join(parts)
 
 
-def result_cache_key(plan_key: str, data_timestamp: str) -> str:
-    return f"{plan_key}@{data_timestamp}"
+def result_cache_key(plan_key: str, data_timestamp: str, options_key: str = "") -> str:
+    """Plan + dataset revision + the options that change the response body.
+
+    `options` is load-bearing, not decoration. `max_buckets`, `include_citations`,
+    `citations_per_datum` and `explain` all reshape the payload, so a key without them serves one
+    caller's answer to another: an `explain=false` request could receive a cached response
+    carrying `meta.api_query_log` and the full `meta.plan` it never asked for, and a
+    `max_buckets=3` response could be served to a caller who asked for 20.
+    """
+    return f"{plan_key}@{data_timestamp}#{options_key}"
+
+
+def options_cache_key(options: Any) -> str:
+    """The subset of `options` that changes the response body."""
+    return (
+        f"b={options.max_buckets},c={int(options.include_citations)},"
+        f"n={options.citations_per_datum},e={int(options.explain)}"
+    )

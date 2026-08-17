@@ -53,12 +53,20 @@ def build(
         if not left or not right:
             continue
         nct = _safe_nct(study)
-        for a in left:
-            node_weights[a] += 1
-            node_groups[a] = group_left
-        for b in right:
-            node_weights[b] += 1
-            node_groups[b] = group_right
+        # A node's weight is the number of contributing trials. In the
+        # intervention-intervention pairing `left` and `right` are the *same* list, so counting
+        # both sides doubled every weight — a graph where every node claimed twice its trials.
+        seen_in_study: set[str] = set()
+        for node, group in ((a, group_left) for a in left):
+            node_groups[node] = group
+            if node not in seen_in_study:
+                node_weights[node] += 1
+                seen_in_study.add(node)
+        for node, group in ((b, group_right) for b in right):
+            node_groups.setdefault(node, group)
+            if node not in seen_in_study:
+                node_weights[node] += 1
+                seen_in_study.add(node)
 
         for source, target in _pairs(left, right, chosen):
             key = (source, target) if source <= target else (target, source)
@@ -75,16 +83,24 @@ def build(
         degree[a] += weight
         degree[b] += weight
 
+    # Every node the graph could have shown, not just those surviving the weight filter —
+    # otherwise a node appearing solely in single-trial edges vanishes from the denominator too.
+    all_nodes = {node for edge in edge_weights for node in edge}
+
     ranked = sorted(degree, key=lambda node: (-degree[node], node))
     max_nodes = ctx.options.max_buckets
     kept_nodes = set(ranked[:max_nodes])
-    dropped_nodes = max(0, len(ranked) - len(kept_nodes))
+    dropped_nodes = max(0, len(all_nodes) - len(kept_nodes))
 
     final_edges = {
         edge: weight
         for edge, weight in kept_edges.items()
         if edge[0] in kept_nodes and edge[1] in kept_nodes
     }
+    # Edges lost because an endpoint failed the node cut are dropped just as surely as those
+    # below the weight threshold, and a disclosure that omits them reports "1 of 1 edges" while
+    # hiding two. "Always truncated *what*, at *what*, *why*" applies to our own pruning first.
+    dropped_by_node_cut = len(kept_edges) - len(final_edges)
 
     per_datum = ctx.options.citations_per_datum if ctx.options.include_citations else 0
     nodes = [
@@ -116,13 +132,16 @@ def build(
         "type": "prune",
         "text": (
             f"showing {len(nodes)} of {len(nodes) + dropped_nodes} nodes and "
-            f"{len(edges)} of {len(edges) + dropped_edges} edges; "
-            f"edges with a single co-occurring trial are hidden"
+            f"{len(edges)} of {len(edge_weights)} edges; "
+            f"{dropped_edges} edge(s) hidden as single co-occurrences and "
+            f"{dropped_by_node_cut} more dropped with pruned nodes"
         ),
         "shown_nodes": len(nodes),
         "total_nodes": len(nodes) + dropped_nodes,
         "shown_edges": len(edges),
-        "total_edges_before_prune": len(edges) + dropped_edges,
+        "total_edges_before_prune": len(edge_weights),
+        "edges_below_weight_threshold": dropped_edges,
+        "edges_dropped_with_pruned_nodes": dropped_by_node_cut,
     }
 
     viz = Visualization(
