@@ -1,0 +1,50 @@
+# The gate every commit in this repo was required to pass, written down so it is checkable
+# rather than claimed. No step here touches the network: upstream is stubbed at the transport
+# seam, and the live scripts (verify_upstream.py, showcase.py) are deliberately not run in CI —
+# ClinicalTrials.gov is a public NIH service, and a CI job hammering it on every push is exactly
+# the discourtesy the client's rate limiting exists to avoid.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      # Node is optional: the demo's renderers are executed under it, and the test that does so
+      # skips where it is absent. CI has it, so CI runs them.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy app
+
+      - name: Tests
+        run: uv run pytest -q --cov=app --cov-report=term
+
+      # The claim in README §7 that `aggFilters` appears nowhere is enforced by a test, but a
+      # grep here fails faster and reads as what it is: a rule about the whole tree.
+      - name: No aggFilters anywhere in the service
+        run: |
+          ! grep -rn "aggFilters" app/ demo/
