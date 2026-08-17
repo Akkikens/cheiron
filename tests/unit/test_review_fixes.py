@@ -619,3 +619,34 @@ async def test_retry_sleeps_stay_inside_the_budget_across_every_attempt(
         await client.count({"query.cond": "cancer"})
 
     assert sum(slept) <= settings.request_budget_ms / 1000
+
+
+def test_a_truncation_note_never_claims_a_denominator_it_does_not_have() -> None:
+    """ "Showing 3 of 3 values, the rest cut" is a contradiction, and it shipped.
+
+    When the cap bites inside the fan-out rather than at the chart's axis, the values beyond it
+    were never counted, so there is no total to quote. Only an axis cut knows both numbers.
+    """
+    from app.engine.coverage import build_coverage
+
+    def note(shown: int, omitted: int) -> str:
+        bucketset = BucketSet(
+            buckets=[
+                Bucket(key=f"K{i}", label=f"K{i}", value=10, exactness="exact")
+                for i in range(shown)
+            ],
+            total=500,
+            unclassified=0,
+            semantics="partition",
+            mode="server_counts",
+            complete=False,
+            omitted_buckets=omitted,
+        )
+        return build_coverage(bucketset, REGISTRY["lead_sponsor"])[0].overlap_note or ""
+
+    axis_cut = note(shown=3, omitted=7)
+    assert "Showing 3 of 10" in axis_cut
+
+    fanout_cut = note(shown=3, omitted=0)
+    assert "Showing 3 of 3" not in fanout_cut
+    assert "their number is unknown" in fanout_cut

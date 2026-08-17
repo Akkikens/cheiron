@@ -89,11 +89,25 @@ def _truncation_note(bucketset: BucketSet, dim: Dimension) -> str:
     before coverage was built — a sum over bars nobody can see is not a disclosure.
     """
     shown = len(bucketset.buckets)
-    present = shown + bucketset.omitted_buckets
+    tail = (
+        f"bucket_sum covers only the {shown:,} plotted. Each count shown is exact and they are "
+        f"not expected to sum to the {bucketset.total:,} matching studies."
+    )
+
+    if bucketset.omitted_buckets:
+        # The chart's shared axis was capped, so both numbers are known.
+        present = shown + bucketset.omitted_buckets
+        return (
+            f"Showing {shown:,} of {present:,} {dim.key} values, the rest cut by "
+            f"options.max_buckets; {tail}"
+        )
+
+    # The aggregation itself stopped at max_buckets, so the values beyond the cap were never
+    # counted and there is no denominator to quote. "Showing 3 of 3, the rest cut" — which this
+    # said when the cap bit during the fan-out rather than at the axis — is a contradiction.
     return (
-        f"Showing {shown:,} of {present:,} {dim.key} values, the rest cut by "
-        f"options.max_buckets; bucket_sum covers only the {shown:,} plotted. Each count shown is "
-        f"exact and they are not expected to sum to the {bucketset.total:,} matching studies."
+        f"Showing {shown:,} {dim.key} values; further values exist but were cut by "
+        f"options.max_buckets before they were counted, so their number is unknown. {tail}"
     )
 
 
