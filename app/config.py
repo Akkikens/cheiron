@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     max_upstream_requests: int = Field(default=40, gt=0)
     max_concurrency: int = Field(default=8, gt=0)
     record_mode_threshold: int = Field(default=2_000, gt=0)
+    openai_model: str = "gpt-4.1"
+    openai_seed: int = 7
+    """Pinned so a repeated question produces a repeatable plan (SPEC A5). Best-effort upstream."""
+    openai_max_tokens: int = Field(default=1_200, gt=0)
+
     sample_pages: int = Field(default=3, gt=0)
     """Label-discovery pages in `sampled_then_confirmed`. Pages are serial, so this is a direct
     latency cost; 3 pages of 1,000 studies is the most that fits the request budget alongside the

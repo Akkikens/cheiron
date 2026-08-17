@@ -422,7 +422,9 @@ async def test_enrollment_above_threshold_refuses(
     transport = stub_transport(settings, upstream.async_handler)
     cache = VocabularyCache(ttl_seconds=3600)
 
-    async def fake_plan(request: AnalyzeRequest, vocab: Vocabulary) -> PlanResult:
+    async def fake_plan(
+        request: AnalyzeRequest, vocab: Vocabulary, **_kwargs: object
+    ) -> PlanResult:
         return PlanResult(
             plan=distribution_plan(metric=Metric.ENROLLMENT_SUM),
             planner="heuristic_fallback",

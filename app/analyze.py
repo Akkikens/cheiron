@@ -12,6 +12,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.cache import Cache, result_cache_key
 from app.config import Settings
 from app.ctg.client import CTGClient, CTGTransport
 from app.ctg.vocab import Vocabulary, VocabularyCache
@@ -38,6 +39,7 @@ from app.models.response import (
 )
 from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
+from app.planner.llm import ChatCompleter, LLMPlanner
 from app.planner.validate import enforce_hard_constraints, validate_plan
 from app.render.encode import render
 from app.render.registry import select_chart
@@ -49,14 +51,25 @@ async def analyze(
     transport: CTGTransport,
     vocabulary_cache: VocabularyCache,
     settings: Settings,
+    plan_cache: Cache[AnalysisPlan] | None = None,
+    result_cache: Cache[AnalyzeResponse] | None = None,
+    completer: ChatCompleter | None = None,
 ) -> AnalyzeResponse:
     client = CTGClient(transport)
     vocab = await vocabulary_cache.get(client)
 
     request.validate_against(vocab)
 
+    planner_warnings: list[str] = []
     t0 = time.perf_counter()
-    plan_result = await _plan(request, vocab)
+    plan_result = await _plan(
+        request,
+        vocab,
+        settings=settings,
+        plan_cache=plan_cache,
+        completer=completer,
+        warnings=planner_warnings,
+    )
     plan, assumptions = enforce_hard_constraints(plan_result.plan, request)
     plan_ms = int((time.perf_counter() - t0) * 1000)
 
@@ -72,6 +85,16 @@ async def analyze(
 
     t1 = time.perf_counter()
     version = await client.version()
+
+    # SPEC §7: keyed on the plan *and* the dataset revision, so an entry cannot outlive the data
+    # it describes. `retrieved_at` on a hit is deliberately the original retrieval time — these
+    # numbers were fetched then, and restamping them with "now" would overstate their freshness.
+    cache_key = result_cache_key(plan.normalized_key(), version.data_timestamp)
+    if result_cache is not None:
+        hit = result_cache.get(cache_key)
+        if hit is not None:
+            return hit
+
     ctx = new_context(
         client,
         vocab,
@@ -126,6 +149,7 @@ async def analyze(
     retrieve_ms = int((time.perf_counter() - t1) * 1000)
 
     warnings = [
+        *planner_warnings,
         *ctx.warnings,
         *bucketset.warnings,
         *coverage_warnings,
@@ -154,12 +178,31 @@ async def analyze(
         plan=plan if request.options.explain else None,
     )
 
-    return AnalyzeResponse(visualization=visualization, meta=meta)
+    response = AnalyzeResponse(visualization=visualization, meta=meta)
+    if result_cache is not None:
+        result_cache.set(cache_key, response)
+    return response
 
 
-async def _plan(request: AnalyzeRequest, vocab: Vocabulary) -> PlanResult:
-    """Heuristic only until T09. A planning miss is unplannable, not invalid."""
-    return await HeuristicPlanner().plan(request, vocab)
+async def _plan(
+    request: AnalyzeRequest,
+    vocab: Vocabulary,
+    *,
+    settings: Settings,
+    plan_cache: Cache[AnalysisPlan] | None,
+    completer: ChatCompleter | None,
+    warnings: list[str],
+) -> PlanResult:
+    """LLM when enabled, heuristic otherwise. A planning miss is unplannable, not invalid.
+
+    With `LLM_ENABLED=false` the planner is never constructed, so the OpenAI SDK is never
+    imported and no key is read — SPEC A6's degraded mode is an absence of code, not a branch
+    inside it.
+    """
+    if not settings.llm_enabled or completer is None:
+        return await HeuristicPlanner().plan(request, vocab)
+
+    return await LLMPlanner(completer, cache=plan_cache, warnings=warnings).plan(request, vocab)
 
 
 async def _aggregate(

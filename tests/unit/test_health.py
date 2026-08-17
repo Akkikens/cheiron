@@ -18,7 +18,15 @@ def test_health_reports_degraded_mode(settings: Settings, enums_handler: Handler
         response = client.get("/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "llm_enabled": False, "vocabulary": "ok"}
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["llm_enabled"] is False
+    assert body["vocabulary"] == "ok"
+    # Caching is a stated property, so /health reports it rather than leaving it to be assumed.
+    assert body["cache"] == {
+        "plan": {"hits": 0, "misses": 0, "entries": 0},
+        "result": {"hits": 0, "misses": 0, "entries": 0},
+    }
 
 
 def test_health_reports_llm_enabled(enums_handler: Handler) -> None:
