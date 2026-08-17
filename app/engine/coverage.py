@@ -7,6 +7,14 @@ the engine works. Two rules follow from that and are enforced here rather than l
   without the arithmetic is not disclosure, it is a disclaimer;
 - a **partition** whose buckets do not reconcile emits a warning naming both numbers. That is a
   bug or an upstream surprise, and papering over it is how a wrong chart ships.
+
+**Two different questions live here, and conflating them caused four bugs in a row.** The overlap
+note describes the *result* — how a multi-valued field makes studies contribute more than once.
+`bucket_sum` and the truncation note describe the *chart* — which categories a reader is actually
+looking at. Truncation moves the second without moving the first, so the two quantities are named
+apart (`result_memberships` versus `plotted_sum`) and each note is handed only the one it means.
+An earlier version passed the full count into a parameter named `memberships` while the local of
+the same name held the plotted one; the reported overlap went negative.
 """
 
 from __future__ import annotations
@@ -28,19 +36,17 @@ def build_coverage(
     data fault rather than as two different units.
     """
     warnings: list[str] = []
-    memberships = bucketset.bucket_sum
-    # The overlap note describes the result; `bucket_sum` describes the chart. Narrowing the
-    # bucket set to the plotted categories moved one and not the other, so the two must be
-    # separated explicitly or the reported overlap goes negative.
-    all_memberships = memberships + int(bucketset.omitted_value)
+    plotted_sum = bucketset.bucket_sum
+    result_memberships = plotted_sum + int(bucketset.omitted_value)
     with_value = bucketset.total - bucketset.unclassified
+    partial = not bucketset.complete
 
     if not counts_studies:
         return (
             Coverage(
                 aggregation_mode=bucketset.mode,
                 groupby_semantics="partition" if dim.partition else "overlapping",
-                bucket_sum=memberships,
+                bucket_sum=plotted_sum,
                 unclassified_count=bucketset.unclassified,
                 overlap_note=(
                     f"Bucket values are enrollment totals, not study counts, so they are not "
@@ -56,29 +62,29 @@ def build_coverage(
 
     if dim.partition:
         overlap_note = None
-        if not bucketset.complete:
+        if partial:
             overlap_note = _truncation_note(bucketset, dim)
-        elif memberships + bucketset.unclassified != bucketset.total:
+        elif plotted_sum + bucketset.unclassified != bucketset.total:
             warnings.append(
                 f"{dim.key} is a partition, so its buckets should sum to the total, but "
-                f"{memberships:,} bucket counts plus {bucketset.unclassified:,} unclassified "
+                f"{plotted_sum:,} bucket counts plus {bucketset.unclassified:,} unclassified "
                 f"does not equal {bucketset.total:,}. The bucket counts are each exact; treat "
                 f"the difference as unexplained rather than as rounding."
             )
     else:
         overlap_note = _overlap_note(
-            dim, bucketset, memberships=all_memberships, with_value=with_value
+            dim, memberships=result_memberships, with_value=with_value, partial=partial
         )
-        if not bucketset.complete:
-            # A multi-valued dimension takes this branch, so without this a truncated chart on
-            # phase or condition disclosed the cut nowhere in `meta.coverage` at all.
+        if partial:
+            # Multi-valued dimensions take this branch, so without appending here a truncated
+            # chart on phase or condition disclosed the cut nowhere in `meta.coverage` at all.
             overlap_note = f"{overlap_note} {_truncation_note(bucketset, dim)}"
 
     return (
         Coverage(
             aggregation_mode=bucketset.mode,
             groupby_semantics="partition" if dim.partition else "overlapping",
-            bucket_sum=memberships,
+            bucket_sum=plotted_sum,
             unclassified_count=bucketset.unclassified,
             overlap_note=overlap_note,
             sample_size=bucketset.sample_size,
@@ -117,9 +123,7 @@ def _truncation_note(bucketset: BucketSet, dim: Dimension) -> str:
     )
 
 
-def _overlap_note(
-    dim: Dimension, bucketset: BucketSet, *, memberships: int, with_value: int
-) -> str:
+def _overlap_note(dim: Dimension, *, memberships: int, with_value: int, partial: bool) -> str:
     """SPEC §4.3's exact shape, with the integers computed rather than described.
 
     A zero overlap is stated explicitly instead of omitting the note: on a multi-valued field,
@@ -130,7 +134,7 @@ def _overlap_note(
     # The upstream field name, so a reader can go and check: `phases` for the phase dimension.
     field = dim.record_path.rsplit(".", 1)[-1]
 
-    if not bucketset.complete or overlap < 0:
+    if partial or overlap < 0:
         # With an incomplete bucket list the memberships counted fall short of the studies that
         # have a value, so their difference is not an overlap — it is the part that was never
         # counted. Printing it as one produced "overlap -606"; asserting the zero branch instead
