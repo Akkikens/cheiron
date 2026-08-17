@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -56,7 +57,14 @@ from app.planner.base import PlanResult
 from app.planner.heuristic import HeuristicPlanner
 from app.planner.llm import ChatCompleter, LLMPlanner
 from app.planner.validate import enforce_hard_constraints, validate_plan
-from app.render.encode import render, render_crosstab, render_panels, render_scatter
+from app.render.encode import (
+    dropped_axis_keys,
+    dropped_crosstab_keys,
+    render,
+    render_crosstab,
+    render_panels,
+    render_scatter,
+)
 from app.render.registry import select_chart
 
 
@@ -134,7 +142,7 @@ async def analyze(
             # are then labelled "Total enrollment" with unit "participants". Refuse up front:
             # a comparison of enrollment needs every series inside record mode, which cannot be
             # known before spending N preflights.
-            raise records.enrollment_unplannable(0, settings.record_mode_threshold)
+            raise records.enrollment_comparison_unplannable(settings.record_mode_threshold)
 
         if len(plan.series) > 1:
             # A comparison is N independent analyses. Each series gets its own preflight, mode
@@ -179,6 +187,15 @@ async def analyze(
                 )
     except BudgetExhausted as exc:
         raise budget_error(exc) from exc
+
+    # The chart may plot fewer categories than the bucket set holds (max_buckets on a shared
+    # axis), and coverage is built from the bucket set — so tell it when the picture is partial.
+    truncated_axis = panels is not None and dropped_axis_keys(panels, request.options.max_buckets)
+    truncated_cells = cells is not None and dropped_crosstab_keys(
+        cells, request.options.max_buckets
+    )
+    if truncated_axis or truncated_cells:
+        bucketset = replace(bucketset, complete=False)
 
     coverage, coverage_warnings = build_coverage(
         bucketset, dim, counts_studies=plan.metric is Metric.STUDY_COUNT

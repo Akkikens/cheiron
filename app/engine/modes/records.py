@@ -313,6 +313,29 @@ def _safe_nct(study: Mapping[str, Any]) -> str | None:
         return None
 
 
+def enrollment_comparison_unplannable(threshold: int) -> Any:
+    """A comparison of enrollment, refused before any preflight has run.
+
+    Separate from `enrollment_unplannable` because that one names the match count, and here
+    there is none: refusing before the per-series preflights is the whole point, so quoting
+    "this query matches 0 studies" would be a fabricated number attached to an honest refusal.
+    """
+    from app.errors import CheironError, ErrorCode
+
+    return CheironError(
+        ErrorCode.UNPLANNABLE_QUERY,
+        f"An enrollment metric cannot be compared across series: each series needs its own "
+        f"complete_records read (\u2264{threshold:,} studies), which is not known until each has "
+        f"been counted separately.",
+        details=[
+            {
+                "record_mode_threshold": threshold,
+                "suggestion": ("Ask for one series at a time, or compare with metric study_count."),
+            }
+        ],
+    )
+
+
 def enrollment_unplannable(total: int, threshold: int) -> Any:
     """Above the record-mode threshold, enrollment metrics cannot be served (BUILD-PLAN §6.3)."""
     from app.errors import CheironError, ErrorCode

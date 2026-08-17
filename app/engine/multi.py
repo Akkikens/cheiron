@@ -106,7 +106,19 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
         )
     mode = min(modes, key=_MODE_EXACTNESS.__getitem__)
 
-    sampled = [panel.bucketset for panel in panels if panel.bucketset.sample_size is not None]
+    # A study is "inspected" if its series read every record, or if the sampler saw it. Mixing a
+    # 1,000-of-100,000 series with a 900-of-1,000 series and averaging the two ratios claimed
+    # 45.5% of the result was inspected when the true figure is 1.9% — a mean of ratios over
+    # different populations, disclosed as if it described one.
+    inspected = 0
+    sampled_any = False
+    for panel in panels:
+        bucketset = panel.bucketset
+        if bucketset.sample_size is not None:
+            inspected += bucketset.sample_size
+            sampled_any = True
+        elif bucketset.mode == "complete_records":
+            inspected += bucketset.total
 
     return (
         BucketSet(
@@ -116,13 +128,9 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
             semantics="partition" if dim.partition else "overlapping",
             mode=mode,
             complete=all(panel.bucketset.complete for panel in panels),
-            # Summed across whichever series sampled, so the disclosure covers the whole chart.
-            sample_size=sum(b.sample_size or 0 for b in sampled) if sampled else None,
-            sample_coverage=(
-                round(sum(b.sample_coverage or 0.0 for b in sampled) / len(sampled), 3)
-                if sampled
-                else None
-            ),
+            # One population, one ratio: studies inspected over studies matched.
+            sample_size=inspected if sampled_any else None,
+            sample_coverage=(round(inspected / total, 3) if sampled_any and total else None),
             warnings=[],
         ),
         warnings,

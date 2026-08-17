@@ -1,8 +1,5 @@
 # Reproducible run without a local Python, for a reviewer who would rather not install one.
-#
-# NOTE: the wheel build and the layer contents are verified; the image itself is not, because no
-# Docker daemon was available on the machine this was written on. Treat it as convenience, and
-# use the uv/pip instructions in the README as the tested path.
+# Built and smoke-tested: /health, the demo page, and a live /analyze from inside the container.
 #
 #   docker build -t cheiron .
 #   docker run --rm -p 8000:8000 -e LLM_ENABLED=false cheiron        # no API key needed

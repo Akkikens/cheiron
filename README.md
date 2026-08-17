@@ -27,9 +27,9 @@ cp .env.example .env                     # add OPENAI_API_KEY for natural-langua
 uv run uvicorn app.main:create_app --factory --reload
 ```
 
-Or without a local Python at all — convenience only, and the one instruction here that is
-**not** verified end to end, since no Docker daemon was available while writing it (the wheel
-build and layer contents are verified):
+Or without a local Python at all. The image builds to 293 MB and was smoke-tested by hand:
+`/health`, the demo page, and a live `/analyze` returning A1's numbers from inside the
+container.
 
 ```bash
 docker build -t cheiron .

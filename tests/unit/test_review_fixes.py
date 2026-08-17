@@ -505,18 +505,46 @@ async def test_series_and_secondary_together_are_refused(vocab: Vocabulary) -> N
     assert any("cannot show two" in message for message in messages)
 
 
-def test_retry_after_is_capped_and_survives_a_malformed_header() -> None:
-    """An hour-long Retry-After would blow the request budget from outside RunContext."""
-    from app.ctg.client import MAX_RETRY_AFTER_S, _retry_after_seconds
+def test_retry_after_is_reported_honestly_and_survives_a_malformed_header() -> None:
+    """The value handed to the caller is upstream's own, uncapped.
+
+    Clamping it would tell a well-behaved client to retry in 30s when upstream asked for an
+    hour, so it retries too early and is limited again. The ceiling belongs on our own sleep.
+    """
+    from app.ctg.client import _retry_after_seconds
 
     def header(value: str) -> Any:
         return httpx.Response(429, headers={"Retry-After": value})
 
     assert _retry_after_seconds(header("7")) == 7
-    assert _retry_after_seconds(header("3600")) == MAX_RETRY_AFTER_S
+    assert _retry_after_seconds(header("3600")) == 3600
     assert _retry_after_seconds(header("inf")) is None  # int(float("inf")) used to raise
     assert _retry_after_seconds(header("nan")) is None
     assert _retry_after_seconds(header("Wed, 21 Oct 2026 07:28:00 GMT")) is None
+
+
+async def test_a_long_retry_after_is_slept_only_within_the_request_budget(
+    settings: Settings,
+) -> None:
+    """A flat 30s ceiling was three times the 10s default budget, per attempt."""
+    slept: list[float] = []
+
+    async def record(seconds: float) -> None:
+        slept.append(seconds)
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="slow", headers={"Retry-After": "3600"})
+
+    client = CTGClient(stub_transport(settings, handler, sleep=record))
+
+    with pytest.raises(CheironError) as caught:
+        await client.count({"query.cond": "cancer"})
+
+    budget_s = settings.request_budget_ms / 1000
+    assert slept, "a 429 should be retried at all"
+    assert max(slept) <= budget_s / 2
+    # The caller is still told what upstream actually asked for.
+    assert caught.value.retry_after_seconds == 3600
 
 
 async def test_a_histogram_never_produces_an_other_bar(

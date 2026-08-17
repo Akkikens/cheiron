@@ -37,15 +37,6 @@ COUNT_PARAMS: Final[Mapping[str, str]] = {
     "fields": "NCTId",
 }
 
-MAX_RETRY_AFTER_S: Final = 30
-"""Ceiling on an honoured `Retry-After`.
-
-Upstream could ask for an hour. Transport sleeps happen outside `RunContext`, which only checks
-its deadline before a wave, so an unbounded wait would hold the request far past
-`REQUEST_BUDGET_MS` instead of failing as `upstream_timeout`. Waiting the ceiling and then
-giving up is the courteous *and* bounded behaviour.
-"""
-
 PAGING_PARAMS: Final = frozenset({"countTotal", "pageSize", "pageToken"})
 """The only params a `pageToken` continuation may legally differ by (notes §3)."""
 
@@ -192,6 +183,13 @@ class CTGTransport:
         self._sleep = sleep
         self._rng = rng or random.Random()
         self._attempts = attempts
+        # How long a `Retry-After` may actually be slept for. Derived from the request budget
+        # rather than fixed, because the point of the ceiling is to stay *inside* that budget:
+        # a flat 30s was three times the 10s default and would have blown it on one attempt,
+        # across `attempts` retries. Half the budget leaves room to fail as upstream_timeout
+        # instead of hanging. The value reported to the caller is upstream's real one, uncapped
+        # — clamping that would have a well-behaved client retry too early and be limited again.
+        self._max_retry_sleep_s = max(1.0, settings.request_budget_ms / 1000 / 2)
         self._revalidated: dict[str, tuple[str, Any]] = {}
 
     async def __aenter__(self) -> Self:
@@ -273,7 +271,9 @@ class CTGTransport:
                 # citizen of a public NIH service; ignoring the one explicit signal it sends
                 # would be the least courteous thing in it.
                 await self._sleep(
-                    retry_after if retry_after is not None else self._backoff(attempt)
+                    min(retry_after, self._max_retry_sleep_s)
+                    if retry_after is not None
+                    else self._backoff(attempt)
                 )
 
         assert last_error is not None
@@ -473,4 +473,4 @@ def _retry_after_seconds(response: httpx.Response) -> int | None:
     # become a 500 in a module whose whole job is surviving upstream weirdness.
     if seconds != seconds or seconds in (float("inf"), float("-inf")):
         return None
-    return max(0, min(int(seconds), MAX_RETRY_AFTER_S))
+    return max(0, int(seconds))

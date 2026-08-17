@@ -110,6 +110,21 @@ def render(
     )
 
 
+def dropped_axis_keys(panels: Sequence[Panel], max_buckets: int) -> int:
+    """How many axis categories a comparison will not plot. `analyze` asks before rendering.
+
+    Coverage is built from the merged bucket set, which still holds every key, so without this
+    the response reported a complete, reconciling `bucket_sum` for a chart that was truncated —
+    and only the annotation disclosed the cut.
+    """
+    return _dropped_key_count(panels, _top_keys_across(panels, max_buckets))
+
+
+def dropped_crosstab_keys(cells: Sequence[CrossCell], max_buckets: int) -> int:
+    kept = _top_primary_keys(cells, max_buckets)
+    return len({cell.primary for cell in cells} - kept)
+
+
 def render_panels(
     plan: AnalysisPlan,
     panels: Sequence[Panel],

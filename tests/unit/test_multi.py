@@ -465,3 +465,83 @@ async def test_a_crosstab_respects_max_buckets(settings: Settings, vocab: Vocabu
     assert {row["phase"] for row in viz.data} == {"P0", "P1"}
     rollup = next(a for a in (viz.annotations or []) if a["type"] == "rollup")
     assert rollup["rolled_categories"] == 4
+
+
+def test_merged_sample_coverage_describes_one_population() -> None:
+    """A mean of two ratios claimed 45.5% inspected where the true figure was 1.9%."""
+    big = Panel(
+        label="Big",
+        bucketset=BucketSet(
+            buckets=[Bucket(key="PHASE2", label="PHASE2", value=900, exactness="exact")],
+            total=100_000,
+            unclassified=0,
+            semantics="overlapping",
+            mode="sampled_then_confirmed",
+            sample_size=1_000,
+            sample_coverage=0.01,
+        ),
+    )
+    small = Panel(
+        label="Small",
+        bucketset=BucketSet(
+            buckets=[Bucket(key="PHASE2", label="PHASE2", value=90, exactness="exact")],
+            total=1_000,
+            unclassified=0,
+            semantics="overlapping",
+            mode="sampled_then_confirmed",
+            sample_size=900,
+            sample_coverage=0.9,
+        ),
+    )
+
+    merged, _ = merge_panels([big, small], PHASE)
+
+    assert merged.sample_size == 1_900
+    assert merged.total == 101_000
+    assert merged.sample_coverage == round(1_900 / 101_000, 3)  # 0.019, not 0.455
+
+
+def test_a_record_mode_series_counts_as_fully_inspected() -> None:
+    """It read every record, so its studies belong in the numerator of the disclosure."""
+    read_fully = Panel(
+        label="Read",
+        bucketset=BucketSet(
+            buckets=[Bucket(key="PHASE2", label="PHASE2", value=100, exactness="exact")],
+            total=500,
+            unclassified=0,
+            semantics="overlapping",
+            mode="complete_records",
+        ),
+    )
+    sampled = Panel(
+        label="Sampled",
+        bucketset=BucketSet(
+            buckets=[Bucket(key="PHASE2", label="PHASE2", value=10, exactness="exact")],
+            total=9_500,
+            unclassified=0,
+            semantics="overlapping",
+            mode="sampled_then_confirmed",
+            sample_size=500,
+            sample_coverage=0.053,
+        ),
+    )
+
+    merged, _ = merge_panels([read_fully, sampled], PHASE)
+
+    assert merged.sample_size == 1_000  # 500 read in full + 500 sampled
+    assert merged.sample_coverage == round(1_000 / 10_000, 3)
+
+
+async def test_a_truncated_comparison_is_not_reported_as_complete(
+    settings: Settings, vocab: Vocabulary
+) -> None:
+    """Coverage is built from the merged set, which still holds every key."""
+    from app.render.encode import dropped_axis_keys
+
+    panels = [
+        a_panel("A", {f"K{i:02d}": 100 - i for i in range(10)}, total=1_000),
+        a_panel("B", {f"K{i:02d}": 50 - i for i in range(10)}, total=500),
+    ]
+
+    assert dropped_axis_keys(panels, 3) == 7
+    assert dropped_axis_keys(panels, 20) == 0
