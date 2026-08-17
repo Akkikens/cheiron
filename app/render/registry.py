@@ -82,11 +82,14 @@ def _primary(
     if plan.intent is Intent.NETWORK:
         if bucketset.mode == "complete_records":
             return ChartType.NETWORK_GRAPH
+        # SPEC §5.4 / A7: never invent co-occurrence from a relevance-ranked or count-only set.
         warnings.append(
             f"network_graph requires complete_records mode; this result has {bucketset.total:,} "
-            f"studies under {bucketset.mode!r}, so returning bar_chart instead."
+            f"studies under {bucketset.mode!r}, so returning grouped_bar_chart instead."
         )
-        return ChartType.BAR_CHART if cardinality <= options.max_buckets else ChartType.TABLE
+        return (
+            ChartType.GROUPED_BAR_CHART if cardinality <= options.max_buckets else ChartType.TABLE
+        )
 
     if plan.intent is Intent.SCATTER and QUANTITATIVE_KEYS:
         return ChartType.SCATTER_PLOT

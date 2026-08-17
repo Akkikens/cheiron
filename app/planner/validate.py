@@ -239,20 +239,6 @@ def _is_year(token: str) -> bool:
     return token.isdigit() and len(token) == 4 and MIN_YEAR <= int(token) <= MAX_YEAR
 
 
-def _check_metric_is_servable(plan: AnalysisPlan) -> list[str]:
-    """BUILD-PLAN §6.3: enrollment metrics need record mode, which lands in T10.
-
-    Flagged rather than silently degraded to `study_count` — answering a different question than
-    the one asked is the failure this whole service is built to avoid. Remove when T10 lands.
-    """
-    if plan.metric is Metric.STUDY_COUNT:
-        return []
-    return [
-        f"metric is {plan.metric.value!r}, which needs per-record enrollment values that the "
-        f"count-based engine cannot produce yet. Use 'study_count'."
-    ]
-
-
 def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
     """Every problem with `plan`, as sentences a model can act on. Empty list means valid.
 
@@ -260,6 +246,9 @@ def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
     then falls back to the heuristic planner (SPEC §3). A plan still invalid after all of that
     is the caller's answer, and it surfaces as `unplannable_query` — not `invalid_request`,
     since the request was well-formed and the question is what could not be served.
+
+    Enrollment metrics are plan-valid (T10): above the record-mode threshold the engine refuses
+    at run time with `unplannable_query` rather than silently degrading to `study_count`.
     """
     return [
         *_check_dimensions(plan),
@@ -267,7 +256,6 @@ def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
         *_check_years(plan),
         *_check_coherence(plan),
         *_check_interpretation(plan, vocab),
-        *_check_metric_is_servable(plan),
     ]
 
 

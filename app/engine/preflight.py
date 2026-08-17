@@ -71,10 +71,6 @@ def unimplemented_mode(mode: AggregationModeName, total: int, dim: Dimension) ->
     return a relevance-ranked slice that looks authoritative and is not (SPEC §5.4).
     """
     reason = {
-        "complete_records": (
-            f"grouping by {dim.key!r} over {total:,} studies needs the full-record reader, "
-            "which is not implemented yet"
-        ),
         "sampled_then_confirmed": (
             f"{dim.key!r} has an open vocabulary, so grouping {total:,} studies needs the "
             "sampling mode, which is not implemented yet"

@@ -390,17 +390,13 @@ def test_overlong_interpretation(vocab: Vocabulary) -> None:
         a_plan(interpretation="x" * 301)
 
 
-# --- rule 6: metrics the engine can serve ---------------------------------------------------
+# --- rule 6: enrollment metrics are plan-valid; runtime refuses above threshold -----------
 
 
 @pytest.mark.parametrize("metric", [Metric.ENROLLMENT_SUM, Metric.ENROLLMENT_MEDIAN])
-def test_enrollment_metrics_are_flagged_until_record_mode(
-    metric: Metric, vocab: Vocabulary
-) -> None:
-    message = only_error(a_plan(metric=metric), vocab)
-
-    assert metric.value in message
-    assert "'study_count'" in message
+def test_enrollment_metrics_pass_plan_validation(metric: Metric, vocab: Vocabulary) -> None:
+    """T10: plan-time acceptance; above-threshold refusal lives in the engine, not here."""
+    assert validate_plan(a_plan(metric=metric), vocab) == []
 
 
 def test_study_count_passes(vocab: Vocabulary) -> None:
@@ -422,7 +418,6 @@ BROKEN_PLANS: list[AnalysisPlan] = [
     a_plan(intent=Intent.SCATTER),
     a_plan(intent=Intent.NETWORK, metric=Metric.ENROLLMENT_SUM),
     a_plan(interpretation="There are 1,750 trials."),
-    a_plan(metric=Metric.ENROLLMENT_MEDIAN),
 ]
 
 

@@ -101,6 +101,15 @@ def render(
 
     buckets, rollup_annotation = _maybe_rollup(bucketset.buckets, ctx.options.max_buckets)
     rows = [_row(bucket, dim, plan.metric, ctx.vocab) for bucket in buckets]
+    if chart_type is ChartType.GROUPED_BAR_CHART:
+        # Network A7 downgrade and comparison charts both need this channel; single-series
+        # paths get a constant so every row still satisfies SPEC §4.1.
+        default_series = plan.series[0].label if plan.series else "all"
+        for row in rows:
+            row.setdefault("series", default_series)
+    if chart_type is ChartType.STACKED_BAR_CHART:
+        for row in rows:
+            row.setdefault("stack", "all")
     rows = _sort_rows(rows, dim, ctx.vocab, chart_type)
     rows = _other_last(rows, dim.key)
 

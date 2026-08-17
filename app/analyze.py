@@ -24,10 +24,10 @@ from app.engine.context import (
 )
 from app.engine.coverage import build_coverage
 from app.engine.dimensions import Dimension, resolve
-from app.engine.modes import counts
+from app.engine.modes import counts, network, records
 from app.engine.preflight import AggregationModeName, preflight, unimplemented_mode
 from app.errors import CheironError, ErrorCode
-from app.models.plan import AnalysisPlan
+from app.models.plan import AnalysisPlan, ChartType, Intent, Metric
 from app.models.request import AnalyzeRequest
 from app.models.response import (
     AnalyzeResponse,
@@ -80,13 +80,14 @@ async def analyze(
     )
     ctx.assumptions.extend(assumptions)
 
+    studies: list[dict[str, Any]] | None = None
     try:
         pre = await preflight(plan, dim, ctx, threshold=settings.record_mode_threshold)
         ctx.assumptions.extend(pre.assumptions)
 
         if pre.total == 0:
             # A4: empty result, never a fabricated row. Skip mode selection entirely — a zero
-            # total would otherwise pick complete_records and refuse as unimplemented.
+            # total would otherwise pick complete_records and page an empty set.
             bucketset = BucketSet(
                 buckets=[],
                 total=0,
@@ -95,13 +96,24 @@ async def analyze(
                 mode="server_counts",
             )
         else:
-            bucketset = await _aggregate(plan, dim, ctx, pre.params, pre.total, pre.mode)
+            if plan.metric is not Metric.STUDY_COUNT and pre.mode != "complete_records":
+                raise records.enrollment_unplannable(pre.total, settings.record_mode_threshold)
+            bucketset, studies = await _aggregate(plan, dim, ctx, pre.params, pre.total, pre.mode)
     except BudgetExhausted as exc:
         raise budget_error(exc) from exc
 
     coverage, coverage_warnings = build_coverage(bucketset, dim)
     chart_type, chart_warnings = select_chart(plan, bucketset, dim, request.options)
-    visualization, render_warnings = render(plan, bucketset, chart_type, dim, ctx)
+
+    if (
+        plan.intent is Intent.NETWORK
+        and chart_type is ChartType.NETWORK_GRAPH
+        and studies is not None
+    ):
+        visualization, render_warnings = network.build(studies, plan, ctx)
+    else:
+        visualization, render_warnings = render(plan, bucketset, chart_type, dim, ctx)
+
     retrieve_ms = int((time.perf_counter() - t1) * 1000)
 
     warnings = [
@@ -148,17 +160,43 @@ async def _aggregate(
     params: dict[str, str],
     total: int,
     mode: AggregationModeName,
-) -> BucketSet:
+) -> tuple[BucketSet, list[dict[str, Any]] | None]:
+    if mode == "complete_records":
+        return await _run_records(plan, dim, ctx, params=params, total=total)
+
     if mode != "server_counts":
         raise unimplemented_mode(mode, total, dim)
 
     try:
-        return await counts.run(plan, dim, ctx, params=params, total=total)
+        bucketset = await counts.run(plan, dim, ctx, params=params, total=total)
     except DataTimestampChanged:
         # SPEC §7: retry the whole group-by once, then fail.
         ctx.data_timestamp = await ctx.observed_data_timestamp()
         try:
-            return await counts.run(plan, dim, ctx, params=params, total=total)
+            bucketset = await counts.run(plan, dim, ctx, params=params, total=total)
+        except DataTimestampChanged as exc:
+            raise CheironError(
+                ErrorCode.UPSTREAM_ERROR,
+                f"ClinicalTrials.gov published a new dataset during the analysis "
+                f"({exc.captured} → {exc.observed}) and a retry still saw movement.",
+            ) from exc
+    return bucketset, None
+
+
+async def _run_records(
+    plan: AnalysisPlan,
+    dim: Dimension,
+    ctx: RunContext,
+    *,
+    params: dict[str, str],
+    total: int,
+) -> tuple[BucketSet, list[dict[str, Any]]]:
+    try:
+        return await records.run(plan, dim, ctx, params=params, total=total)
+    except DataTimestampChanged:
+        ctx.data_timestamp = await ctx.observed_data_timestamp()
+        try:
+            return await records.run(plan, dim, ctx, params=params, total=total)
         except DataTimestampChanged as exc:
             raise CheironError(
                 ErrorCode.UPSTREAM_ERROR,

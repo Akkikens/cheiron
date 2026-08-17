@@ -127,7 +127,7 @@ def test_network_outside_complete_records_downgrades_and_warns() -> None:
         REGISTRY["phase"],
         Options(),
     )
-    assert chosen is ChartType.BAR_CHART
+    assert chosen is ChartType.GROUPED_BAR_CHART
     assert any("complete_records" in warning for warning in warnings)
     assert any("5,000" in warning for warning in warnings)
 
