@@ -1,4 +1,4 @@
-# T06 — Preflight, the `server_counts` fan-out, and coverage math
+# T06: Preflight, the `server_counts` fan-out, and coverage math
 
 **Est. 30 min · depends on: T03, T05 · unblocks: T07, T11**
 
@@ -26,7 +26,7 @@ class BudgetExhausted(Exception): ...
 budget and what it was spent on. Checking the deadline before each fan-out wave, not just
 at the end.
 
-## Base filter construction — `query.*` and `filter.advanced` are not interchangeable
+## Base filter construction: `query.*` and `filter.advanced` are not interchangeable
 
 T03 measured that the same free-text expression returns different counts depending on which
 parameter carries it: `(head OR neck) AND pain NOT cancer` is **2,075** under `query.cond`
@@ -66,26 +66,26 @@ serial (notes §1), so 2k studies ≈ 2 round trips but 50k ≈ 50 ≈ 25–50 s
 number a reviewer is most likely to ask about.
 
 Until T10/T11 land, unimplemented modes raise a clear `NotImplementedError` that the route
-converts to `unplannable_query` with an explanation — never a silent downgrade.
+converts to `unplannable_query` with an explanation: never a silent downgrade.
 
 ## `app/engine/modes/counts.py`
 
 For a closed-vocabulary dimension:
 
 1. Build one predicate per enum value via `Essie.field_eq(dim.area, value)` ANDed with the
-   base filter. Values come from `vocab.values(dim.enum_name)` — never hardcoded.
+   base filter. Values come from `vocab.values(dim.enum_name)`: never hardcoded.
 2. Issue all of them **concurrently** through the client (the semaphore does the
    throttling), plus one `Essie.missing(dim.area)` for `unclassified_count`.
 3. **Any bucket failure fails the whole group-by** (SPEC §4.5: "partial aggregations are
    never rendered"). Use `asyncio.gather(..., return_exceptions=True)` and re-raise the
-   first exception after cancelling the rest — a chart with a silently missing bar is worse
+   first exception after cancelling the rest: a chart with a silently missing bar is worse
    than an error.
 4. Re-read `dataTimestamp` after the wave. If it changed, raise `DataTimestampChanged`;
    the caller retries the entire group-by **once**, then fails (SPEC §7).
 5. Year dimensions use `Essie.date_range` per bucket, derived from
    `filters.start_year..end_year` (defaulting to the last 10 years when unset) at
    `bin.size` granularity. Cap buckets at `options.max_buckets` and report the clamp.
-6. Return a `BucketSet` (BUILD-PLAN §4) with `exactness="exact"` on every bucket — count
+6. Return a `BucketSet` (BUILD-PLAN §4) with `exactness="exact"` on every bucket: count
    fan-out counts are exact regardless of result-set size.
 
 ## `app/engine/coverage.py`
@@ -108,14 +108,14 @@ For a closed-vocabulary dimension:
 
 ## Tests
 
-- **SPEC A1, against a recorded fixture** — `query.intr=pembrolizumab` grouped by phase:
+- **SPEC A1, against a recorded fixture**: `query.intr=pembrolizumab` grouped by phase:
   ```
   total 2927 · MISSING 169 · buckets NA 53 · EARLY_PHASE1 51 · PHASE1 1039 ·
   PHASE2 1750 · PHASE3 363 · PHASE4 17 · Σ 3273 · overlap 515
   ```
   Assert `bucket_sum == 3273`, `unclassified_count == 169`,
   `groupby_semantics == "overlapping"`, and **no** share/percentage key anywhere.
-- `NA` and `MISSING` are distinct buckets and never merged (notes §6.1) — 234,433 vs
+- `NA` and `MISSING` are distinct buckets and never merged (notes §6.1): 234,433 vs
   141,903 corpus-wide.
 - One injected bucket failure → whole group-by raises; no partial `BucketSet` escapes.
 - `dataTimestamp` changing mid-fan-out → one retry, then `502`.

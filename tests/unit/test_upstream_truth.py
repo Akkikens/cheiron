@@ -61,7 +61,7 @@ def test_full_match_on_a_partial_token_is_an_honest_zero() -> None:
 
 @pytest.mark.parametrize("case", MANIFEST["rejected_spellings"])
 def test_misspelled_operators_fail_loudly(case: dict[str, object]) -> None:
-    """Unlike aggFilters, a bad operator is a 400 — never a silent zero."""
+    """Unlike aggFilters, a bad operator is a 400: never a silent zero."""
     assert case["http_status"] == 400
     assert case["content_type"] == "text/plain"
 

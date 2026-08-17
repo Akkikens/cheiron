@@ -1,4 +1,4 @@
-"""A6 — degraded mode. SPEC §8.
+"""A6: degraded mode. SPEC §8.
 
 With `LLM_ENABLED=false` and **no API key anywhere in the environment**, the questions the
 fallback planner covers still return valid, correct specs. This is the half T05 could only prove
@@ -18,7 +18,7 @@ QUESTION = {"query": "How many trials by phase?", "drug_name": "Pembrolizumab"}
 
 @pytest.fixture
 def keyless(monkeypatch: pytest.MonkeyPatch) -> Settings:
-    """Not merely unset in Settings — removed from the process environment entirely."""
+    """Not merely unset in Settings: removed from the process environment entirely."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     return Settings(_env_file=None, llm_enabled=False)
 

@@ -1,4 +1,4 @@
-"""A3 — no silent truncation. SPEC §8.
+"""A3: no silent truncation. SPEC §8.
 
 Above the record-mode threshold on an open vocabulary the service must say what it sampled,
 how much of the corpus that was, and which half of the answer is exact.

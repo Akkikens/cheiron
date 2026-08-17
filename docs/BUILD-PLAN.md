@@ -1,4 +1,4 @@
-# Cheiron — 4-Hour Build Plan
+# Cheiron: 4-Hour Build Plan
 
 Companion to [`../SPEC.md`](../SPEC.md) (the contract) and
 [`CTG-API-NOTES.md`](CTG-API-NOTES.md) (verified upstream behaviour).
@@ -18,7 +18,7 @@ Paste this preamble with **every** task prompt:
 >
 > Hard rules:
 > 1. **The LLM never emits a number, label, or fact.** It emits only an `AnalysisPlan`.
->    If you find yourself passing study data into a prompt, stop — you've broken the thesis.
+>    If you find yourself passing study data into a prompt, stop: you've broken the thesis.
 > 2. **Never use `aggFilters`.** All bucket predicates go through the Essie builder.
 > 3. **Never invent upstream behaviour.** If `CTG-API-NOTES.md` doesn't cover it, either
 >    verify with a live `curl` and add a row to the notes, or raise it as an open question.
@@ -32,7 +32,7 @@ Paste this preamble with **every** task prompt:
 
 ---
 
-## 1. Stack (decided — do not re-litigate mid-build)
+## 1. Stack (decided: do not re-litigate mid-build)
 
 | Concern | Choice | Why |
 |---|---|---|
@@ -42,7 +42,7 @@ Paste this preamble with **every** task prompt:
 | HTTP client | `httpx.AsyncClient` (HTTP/2, gzip) | Concurrent count fan-out |
 | LLM | OpenAI `gpt-4.1` via Structured Outputs (`strict: true`) | Key is already in `.env`; strict schema is §3's requirement |
 | Cache | In-process `cachetools.TTLCache` behind a `Cache` protocol | Stateless-per-§7 means no shared store is required for the take-home |
-| Tests | pytest + pytest-asyncio + `httpx.MockTransport` | T02 built an injectable transport seam; `respx` would patch around it. One mocking style only — `respx` is **not** a dependency |
+| Tests | pytest + pytest-asyncio + `httpx.MockTransport` | T02 built an injectable transport seam; `respx` would patch around it. One mocking style only: `respx` is **not** a dependency |
 | Lint/types | ruff + mypy (`strict` on `app/`) | |
 | Deps | `uv` if available, else `pip` + `requirements.txt` | |
 
@@ -100,12 +100,12 @@ tests/
 ## 3. Task order and schedule
 
 Wall-clock estimates assume Cursor doing the typing and you reviewing. **Stop at the
-4-hour mark wherever you are** — the order is chosen so that every prefix is a coherent,
+4-hour mark wherever you are**: the order is chosen so that every prefix is a coherent,
 demoable system.
 
 | # | Task | Est. | Depends on | Demoable after |
 |---|---|---|---|---|
-| [T01](tasks/T01-scaffold-and-upstream-truth.md) | Scaffold, config, errors, `/health`, **resolve `COVER` vs `COVERAGE`** | 20m | — | `GET /health` |
+| [T01](tasks/T01-scaffold-and-upstream-truth.md) | Scaffold, config, errors, `/health`, **resolve `COVER` vs `COVERAGE`** | 20m |: | `GET /health` |
 | [T02](tasks/T02-ctg-client.md) | `CTGClient` transport + limiter + breaker + `Vocabulary` | 25m | T01 | live count against CTG |
 | [T03](tasks/T03-essie-and-dimensions.md) | Essie builder + escaping + dimension registry | 20m | T02 | predicates provably correct |
 | [T04](tasks/T04-models.md) | Request/plan/response models | 20m | T01 | `422` on bad input |
@@ -118,7 +118,7 @@ demoable system.
 | [T11](tasks/T11-sampled-mode.md) | `sampled_then_confirmed` mode | 25m | T06 | **A3 passes** |
 | [T12](tasks/T12-acceptance-and-readme.md) | A1–A7 acceptance suite + README + polish | 30m | all | the submission |
 
-**If you fall behind, cut in this order:** T10 (network graph — SPEC already permits
+**If you fall behind, cut in this order:** T10 (network graph. SPEC already permits
 downgrading), then T11 (fall back to `table` + a warning above threshold), then T08
 (citations are the stated "bonus"). Never cut T12.
 
@@ -126,8 +126,8 @@ downgrading), then T11 (fall back to `table` + a warning above threshold), then 
 The original note follows, since the diagnosis is the reusable part.
 
 **Original:** The `OPENAI_API_KEY` in `.env` returned 401 on every
-request during T04. Nothing before T09 needs it — T05's planner is deliberately keyless and
-T06–T08 are engine and render — so the block costs nothing until then. Two notes for whoever
+request during T04. Nothing before T09 needs it. T05's planner is deliberately keyless and
+T06–T08 are engine and render, so the block costs nothing until then. Two notes for whoever
 unblocks it:
 
 - 401 is authentication, not billing. Exhausted quota returns 429 `insufficient_quota`, so a
@@ -154,7 +154,7 @@ class CTGClient:
     @property
     def query_log(self) -> list[str]: ...            # feeds meta.api_query_log
 
-# engine/modes/*.py — every mode satisfies this
+# engine/modes/*.py: every mode satisfies this
 class AggregationMode(Protocol):
     name: Literal["complete_records", "server_counts", "sampled_then_confirmed"]
     async def run(self, plan: AnalysisPlan, dim: Dimension, ctx: RunContext) -> BucketSet: ...
@@ -199,7 +199,7 @@ a changed `data_timestamp` raises `DataTimestampChanged` → the whole group-by 
 
 ---
 
-## 6. Open questions — all resolved
+## 6. Open questions: all resolved
 
 1. **`COVER` vs `COVERAGE`.** T01 measured them as exact aliases (both 1,841); standardized on
    `COVERAGE`, pinned in `app/constants.py`. The real defect was next door: both documents wrote

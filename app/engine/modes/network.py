@@ -1,7 +1,7 @@
 """Co-occurrence network graphs. SPEC §5.4.
 
 Available **only** in `complete_records`, where co-occurrence is computed from the full result
-set and is therefore exact and unbiased. Sampled co-occurrence is not offered at all — a
+set and is therefore exact and unbiased. Sampled co-occurrence is not offered at all: a
 network built from a relevance-ranked sample looks authoritative and isn't.
 """
 
@@ -56,7 +56,7 @@ def build(
         nct = _safe_nct(study)
         # A node's weight is the number of contributing trials. In the
         # intervention-intervention pairing `left` and `right` are the *same* list, so counting
-        # both sides doubled every weight — a graph where every node claimed twice its trials.
+        # both sides doubled every weight: a graph where every node claimed twice its trials.
         seen_in_study: set[str] = set()
         for node, group in ((a, group_left) for a in left):
             node_groups[node] = group
@@ -85,7 +85,7 @@ def build(
         degree[a] += weight
         degree[b] += weight
 
-    # Every node the graph could have shown, not just those surviving the weight filter —
+    # Every node the graph could have shown, not just those surviving the weight filter
     # otherwise a node appearing solely in single-trial edges vanishes from the denominator too.
     all_nodes = {node for edge in edge_weights for node in edge}
 
@@ -212,7 +212,7 @@ _PAIRING_FIELDS: dict[Pairing, str] = {
         "protocolSection.armsInterventionsModule.interventions[].name"
     ),
 }
-"""The structured fields whose co-occurrence constitutes an edge — never a narrative field."""
+"""The structured fields whose co-occurrence constitutes an edge: never a narrative field."""
 
 
 def _excerpt_for(left: list[str], right: list[str], pairing: Pairing) -> str:

@@ -7,11 +7,11 @@ Three phases:
 
 1. **Discover.** Page the base filter with a projection over the membership field and tally raw
    label frequencies. These are candidates, *not* counts. There is no default sort upstream
-   (notes §3), so the sample is relevance-ranked and its frequencies are biased — reporting them
+   (notes §3), so the sample is relevance-ranked and its frequencies are biased: reporting them
    as values would be exactly the fabrication this service exists to avoid.
 2. **Confirm.** One count-only request per candidate, concurrently, through
    `COVERAGE[FullMatch]`. Without it `AREA[LeadSponsorName]"Merck"` returns 2,733 against the
-   correct 1,841 (notes §2, SPEC A2) — a short free-text name is a substring of longer ones.
+   correct 1,841 (notes §2, SPEC A2): a short free-text name is a substring of longer ones.
    T06 measured that `FullMatch` is a no-op on `LocationCountry`, whose values are normalized
    exact terms; that is a fact about one field, not a licence to drop the operator, and T03
    measured over-scoping as harmless. So it is applied uniformly, with no per-dimension opt-out.
@@ -58,7 +58,7 @@ COVERAGE_CAVEAT: Final = (
 )
 
 FREE_TEXT_CAVEAT: Final = (
-    "Lead sponsor names are free text — the corpus holds 51,610 distinct values, and "
+    "Lead sponsor names are free text. The corpus holds 51,610 distinct values, and "
     "'Novartis' and 'Novartis Pharmaceuticals' are separate labels that are NOT merged here. "
     "Group by sponsor_class for a clean partition."
 )
@@ -264,7 +264,7 @@ def _disclosure(sample_size: int, total: int) -> str:
     """SPEC §4.3's required sentence. Per-label counts exact; the label *set* may be incomplete.
 
     When the sample reached every matching study there is no "outside the sample", and saying a
-    label might be hiding there would be a disclaimer rather than a disclosure — the kind of
+    label might be hiding there would be a disclaimer rather than a disclosure: the kind of
     hedging that teaches a reader to ignore the warnings that do matter.
     """
     percent = (sample_size / total * 100) if total else 0.0

@@ -126,7 +126,7 @@ def test_status_dimension_is_not_last_known_status() -> None:
 
 
 def test_sponsor_class_uses_the_lead_sponsor_piece() -> None:
-    """AgencyClass also governs OrgClass and CollaboratorClass — different questions."""
+    """AgencyClass also governs OrgClass and CollaboratorClass: different questions."""
     assert "LeadSponsorClass" in PIECES_BY_ENUM["AgencyClass"]
     assert REGISTRY["sponsor_class"].area == "LeadSponsorClass"
 

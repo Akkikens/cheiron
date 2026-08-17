@@ -1,7 +1,7 @@
 // Executes the demo's renderers against real specification shapes and asserts what they drew.
 //
 // The Python contract test proves the demo *handles* every chart type; this proves the drawing
-// is real — that a bar chart emits one rect per row, that a network emits a line per edge, that
+// is real: that a bar chart emits one rect per row, that a network emits a line per edge, that
 // a scatter drops nothing silently. Run from `tests/unit/test_demo_renders.py`, which skips if
 // node is unavailable so the suite stays Python-only where it has to be.
 //

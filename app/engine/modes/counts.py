@@ -3,7 +3,7 @@
 **The failure semantics here are inverted from the rest of the codebase.** Everywhere else a
 degraded answer beats no answer; here a single failed bucket must kill the whole group-by,
 because SPEC §4.5 forbids rendering a partial aggregation. A bar chart missing one bar does not
-look broken — it looks like a finding. So `gather(return_exceptions=True)` collects every
+look broken: it looks like a finding. So `gather(return_exceptions=True)` collects every
 outcome, the remaining tasks are cancelled, and the first exception is re-raised.
 
 Citation fetches ride the same wave but with the opposite failure rule: a missing citation is
@@ -217,7 +217,7 @@ def _bucket_keys(plan: AnalysisPlan, dim: Dimension, ctx: RunContext) -> list[st
     #
     # The intersection is the load-bearing part. `sort_order` is SPEC §4's display array, so it
     # legitimately contains the synthetic MISSING bucket, which is not an upstream enum value.
-    # Enumerating it directly produced `AREA[Phase]\MISSING` — the escaped literal word — which
+    # Enumerating it directly produced `AREA[Phase]\MISSING`, the escaped literal word, which
     # counts zero at HTTP 200 and duplicates the unclassified probe.
     live = set(ctx.vocab.values(dim.enum_name))
     return [value for value in ctx.vocab.sort_order(dim.enum_name) if value in live]

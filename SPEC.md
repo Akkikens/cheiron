@@ -1,4 +1,4 @@
-# Cheiron — Service Specification
+# Cheiron. Service Specification
 
 Version 1.0 · Contract for `POST /analyze`
 
@@ -6,7 +6,7 @@ A natural-language question about clinical trials in; a **renderable visualizati
 specification**, with every number traceable to ClinicalTrials.gov, out.
 
 This document is the authoritative contract. It is written to be implementable without
-guessing — a frontend engineer builds a renderer from §4, and a backend engineer builds
+guessing: a frontend engineer builds a renderer from §4, and a backend engineer builds
 the service from §5–§7. Verified API behaviour it depends on is in
 [`docs/CTG-API-NOTES.md`](docs/CTG-API-NOTES.md).
 
@@ -77,13 +77,13 @@ Consequences that fall out of this one rule:
 Structured fields are **hard constraints**. They are applied verbatim and **override**
 anything the planner infers from `query`; the model is told about them but cannot
 contradict them. This is what makes `{"query": "...for this drug", "drug_name": "..."}`
-work — the pronoun is resolved by the caller, not guessed.
+work: the pronoun is resolved by the caller, not guessed.
 
 > **`sponsor` maps to `query.lead` (lead sponsor only), not `query.spons` (lead +
-> collaborators).** These differ materially — `Pfizer` returns 3,862 vs 6,064. The choice
+> collaborators).** These differ materially: `Pfizer` returns 3,862 vs 6,064. The choice
 > is recorded in `meta.assumptions` on every response that uses it.
 
-Unknown top-level fields are **rejected** (`422`), not ignored — a typo'd filter that
+Unknown top-level fields are **rejected** (`422`), not ignored: a typo'd filter that
 silently does nothing is worse than an error.
 
 ### 2.2 `options`
@@ -97,7 +97,7 @@ silently does nothing is worse than an error.
 
 ---
 
-## 3. `AnalysisPlan` — the internal IR
+## 3. `AnalysisPlan`: the internal IR
 
 The **only** thing the model produces. Enforced by JSON Schema (`strict: true`), then
 re-validated against the live vocabulary loaded from `/studies/enums`.
@@ -125,7 +125,7 @@ re-validated against the live vocabulary loaded from `/studies/enums`.
 | `intent` | enum | `distribution` `trend` `comparison` `geo` `network` `scatter` `histogram` `list` |
 | `filters` | `StudyFilter` | Same shape as §2.1's structured fields |
 | `series` | `SeriesSpec[]` | Length > 1 ⇒ comparison. Each = `{label, filters}` overlay |
-| `group_by` | `GroupBy` | `{dimension, bin?}` — §5.1 |
+| `group_by` | `GroupBy` | `{dimension, bin?}`: §5.1 |
 | `secondary_group_by` | `GroupBy?` | Present ⇒ grouped/stacked bar |
 | `metric` | enum | `study_count` `enrollment_sum` `enrollment_median` |
 | `viz_hint` | `ChartType?` | **Advisory only.** The registry (§6) decides; a hint that violates a safety rule is discarded |
@@ -174,7 +174,7 @@ never fails because the model misbehaved.
 | Field | Type | Notes |
 |---|---|---|
 | `type` | `ChartType` | §6 |
-| `title` | string | Human-readable, derived from the plan — never model-authored prose |
+| `title` | string | Human-readable, derived from the plan: never model-authored prose |
 | `subtitle` | string? | Total + data date. Renderers should show it; it carries the provenance |
 | `encoding` | object | Channel → field mapping. Channels vary by type (§6.2) |
 | `data` | object[] | Flat rows for most types; `{nodes, edges}` for `network_graph` |
@@ -200,14 +200,14 @@ Rules that make these trustworthy:
 
 1. `excerpt` is an **exact substring / verbatim serialization** of the upstream response.
    Never model-generated, never paraphrased.
-2. `field` is the **structured field that determines bucket membership** — not a free-text
+2. `field` is the **structured field that determines bucket membership**: not a free-text
    summary scan. This matters: `query.intr=keytruda` matches via synonym expansion, so the
    literal string "keytruda" may appear nowhere in the record. Citing
    `interventions[].name` is always defensible; citing a `briefSummary` grep is not.
 3. Citations are a **sample**, and say so: `datum.citation_note` reads
    `"3 of 1750 contributing studies"`. They are evidence, not enumeration.
 
-### 4.3 `meta` — including honest coverage
+### 4.3 `meta`: including honest coverage
 
 ```jsonc
 {
@@ -243,7 +243,7 @@ Rules that make these trustworthy:
 
 - `groupby_semantics` is `"overlapping"` whenever the dimension is multi-valued (§5.1).
   When overlapping, `overlap_note` **must state the actual numbers**, as above. A bare
-  `truncated: true` is not acceptable anywhere in this API — always truncated *what*, *at
+  `truncated: true` is not acceptable anywhere in this API: always truncated *what*, *at
   what*, *why*, and *whether the shown numbers are still exact*.
 - `unclassified_count` is always present, from `AREA[<field>]MISSING`. A gap is never
   left invisible.
@@ -253,7 +253,7 @@ Rules that make these trustworthy:
 ### 4.4 "No visualization needed"
 
 If the question resolves to a single number or a lookup, `type` is `kpi` or `table`. The
-service always returns a valid spec — it never returns prose instead. `intent: list` with
+service always returns a valid spec: it never returns prose instead. `intent: list` with
 zero results yields an empty `table` plus a warning, never a fabricated row.
 
 ### 4.5 Errors
@@ -268,7 +268,7 @@ zero results yields an empty `table` plus a warning, never a fabricated row.
 | 504 | `upstream_timeout` | Budget exceeded |
 | 503 | `upstream_circuit_open` | Breaker open; `retry_after_seconds` set |
 | 429 | `rate_limited` | **Upstream** asked us to slow down; `retry_after_seconds` carries its header value verbatim. The local token bucket waits rather than rejecting, so it never produces this |
-| 500 | `internal_error` | Unhandled server-side fault. Generic message; `request_id` is the only actionable content. Never attributed to upstream — our bugs are ours |
+| 500 | `internal_error` | Unhandled server-side fault. Generic message; `request_id` is the only actionable content. Never attributed to upstream: our bugs are ours |
 
 ```jsonc
 { "error": { "code": "upstream_timeout", "message": "…", "request_id": "…", "retry_after_seconds": 5 } }
@@ -289,12 +289,12 @@ validate → plan → PREFLIGHT → { DISCOVER } → COUNT → CITE → aggregat
 
 ### 5.1 Dimension registry
 
-Each groupable dimension is one registry entry — adding a question type means adding a
+Each groupable dimension is one registry entry: adding a question type means adding a
 row here, not a new code path.
 
 | Dimension | Field | Vocabulary | Partition? |
 |---|---|---|---|
-| `phase` | `Phase` | closed (enum) | **no** — multi-valued |
+| `phase` | `Phase` | closed (enum) | **no**: multi-valued |
 | `overall_status` | `OverallStatus` | closed | yes |
 | `study_type` | `StudyType` | closed | yes |
 | `sponsor_class` | `LeadSponsorClass` | closed | yes |
@@ -326,7 +326,7 @@ Every mode additionally issues `AREA[<field>]MISSING` for `unclassified_count`.
 
 ### 5.3 Bucket predicates
 
-All predicates are built by a single Essie builder. **`aggFilters` is never used** — it
+All predicates are built by a single Essie builder. **`aggFilters` is never used**: it
 disagrees with Essie on edge values and fails *silently* on a bad token
 (`aggFilters=phase:na` → 0, while `AREA[Phase]NA` → 234,433).
 
@@ -350,7 +350,7 @@ User input is never concatenated into an expression unescaped.
 Only available in `complete_records` mode (`total ≤ 2000`), where co-occurrence is
 computed from the full result set and is therefore exact and unbiased. Outside that
 regime the service downgrades to a grouped bar chart and records the reason in
-`meta.warnings`. Sampled co-occurrence is not offered — a network graph built from a
+`meta.warnings`. Sampled co-occurrence is not offered: a network graph built from a
 relevance-ranked sample looks authoritative and isn't.
 
 Node/edge sets: `sponsor ↔ intervention`, `intervention ↔ intervention` (co-occurring in
@@ -446,7 +446,7 @@ dimension. No `share_of_total` field emitted when `groupby_semantics=overlapping
 
 These are executable tests, pinned to a recorded `dataTimestamp`.
 
-**A1 — reconciliation.** `query.intr=pembrolizumab`, group by phase:
+**A1: reconciliation.** `query.intr=pembrolizumab`, group by phase:
 
 ```
 total  2927 · MISSING 169 · with ≥1 phase 2758
@@ -456,23 +456,23 @@ buckets: NA 53 · EARLY_PHASE1 51 · PHASE1 1039 · PHASE2 1750 · PHASE3 363 ·
 Response must report `bucket_sum: 3273`, `unclassified_count: 169`,
 `groupby_semantics: "overlapping"`, and must **not** contain a share/percentage field.
 
-**A2 — exact-match discipline.** `AREA[LeadSponsorName]"Merck"` = 2733 but
+**A2: exact-match discipline.** `AREA[LeadSponsorName]"Merck"` = 2733 but
 `AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` = 1841. A sponsor bar
 chart must report 1841. The `AREA[]` prefix is part of the predicate: the same expression
 without it returns 4591 at HTTP 200.
 
-**A3 — no silent truncation.** A query with `total > 2000` and an open dimension must set
+**A3: no silent truncation.** A query with `total > 2000` and an open dimension must set
 `aggregation_mode: "sampled_then_confirmed"`, populate `sample_coverage`, and emit a
 warning. `pageSize` must never be sent above 1000 (it clamps silently).
 
-**A4 — no fabrication.** A query matching zero studies returns an empty `data` array,
-`total_matching_studies: 0`, and a warning — never an invented row.
+**A4: no fabrication.** A query matching zero studies returns an empty `data` array,
+`total_matching_studies: 0`, and a warning: never an invented row.
 
-**A5 — planner determinism.** A fixed question yields a stable `AnalysisPlan`. Golden set
+**A5: planner determinism.** A fixed question yields a stable `AnalysisPlan`. Golden set
 of ~20 questions asserts the IR, not prose.
 
-**A6 — degraded mode.** With `LLM_ENABLED=false` the golden questions covered by the
+**A6: degraded mode.** With `LLM_ENABLED=false` the golden questions covered by the
 fallback planner still return valid, correct specs.
 
-**A7 — safety rules.** `intent=network` with `total > 2000` downgrades and warns; a
+**A7: safety rules.** `intent=network` with `total > 2000` downgrades and warns; a
 `viz_hint` of `pie_chart` on a non-partition dimension is discarded.

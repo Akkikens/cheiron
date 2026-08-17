@@ -25,7 +25,7 @@ names two dimensions is what the LLM planner is for.
 This trap caught three attempts in a row. "how many participants" claimed "…in each phase";
 "how many patients" claimed it too; and the narrower "how many patients are in" / "how many
 patients per" claimed "How many patients are in each phase?" and "How many patients per phase?"
-— the second of which could never have worked, since "per <dimension>" *is* a continuation.
+the second of which could never have worked, since "per <dimension>" *is* a continuation.
 
 So the whole "how many <people>" family is banned rather than re-phrased. A question counting
 people is an `enrollment_sum` question, which this planner cannot express anyway; what it can
@@ -40,7 +40,7 @@ keyword matcher, and picking apart which of two named dimensions the caller mean
 the judgement the LLM planner exists for.
 
 What this planner refuses to do is guess. If `drug_name` is absent it does not mine the question
-for a drug name — a wrong filter produces a confident wrong chart, which is worse than asking
+for a drug name: a wrong filter produces a confident wrong chart, which is worse than asking
 the caller to be explicit. `filters.term` is therefore always `None`.
 """
 

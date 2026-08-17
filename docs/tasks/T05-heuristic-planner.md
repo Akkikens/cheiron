@@ -1,4 +1,4 @@
-# T05 — Heuristic planner and plan validation
+# T05: Heuristic planner and plan validation
 
 **Est. 25 min · depends on: T03, T04 · unblocks: T06, T09**
 
@@ -21,7 +21,7 @@ class Planner(Protocol):
 
 ## `app/planner/validate.py`
 
-`validate_plan(plan, vocab) -> list[str]` returning **human-readable** error strings — they
+`validate_plan(plan, vocab) -> list[str]` returning **human-readable** error strings: they
 are fed verbatim back to the model as repair input in T09, so they must say what is wrong
 and what would be valid.
 
@@ -35,14 +35,14 @@ Checks:
    `secondary_group_by`; `bin` only on temporal or quantitative dimensions.
    **`intent=scatter` and `intent=histogram` are rejected outright** with
    `unplannable_query`: both need a quantitative `group_by` dimension, and SPEC §5.1's
-   registry defines none — every dimension there is nominal, ordinal, or temporal. The
+   registry defines none: every dimension there is nominal, ordinal, or temporal. The
    message must name the real reason and the real blocker, e.g. *"scatter requires a
    quantitative dimension; none is defined. Enrollment is the only quantitative field and is
    computable solely in complete_records mode (≤2000 studies)."* Rejecting is mandatory
-   because these intents **are** in the plan schema, so from T09 the model can emit them —
+   because these intents **are** in the plan schema, so from T09 the model can emit them
    and falling through to the `table` branch would silently answer a different question.
 4. `start_year <= end_year`; both within 1900–2100.
-5. `interpretation` non-empty, ≤300 chars, and contains **no digits that aren't a year** —
+5. `interpretation` non-empty, ≤300 chars, and contains **no digits that aren't a year**
    cheap guard against the model smuggling a count into prose (SPEC §1).
 6. Enrollment metrics: `metric != study_count` requires a plan the engine can actually
    serve. Until T10 lands, flag it (see BUILD-PLAN §6.3).
@@ -68,12 +68,12 @@ Rule-based, no model, no network beyond the vocabulary. Five template intents pe
 
 Resolution rules:
 - First match in the table order above wins; ties are impossible by construction. Document
-  the precedence in a module docstring — it is observable behaviour.
+  the precedence in a module docstring: it is observable behaviour.
 - No match → `CheironError(unplannable_query, 422)` with `suggestions` listing the five
   question shapes it *can* answer, phrased as examples the caller can retry with.
 - Filters come **only** from the request's structured fields plus a conservative
   free-text mapping: if `drug_name` is absent, do not try to extract a drug name from the
-  question — that's the LLM's job, and guessing it here would produce confidently wrong
+  question: that's the LLM's job, and guessing it here would produce confidently wrong
   filters. Leave `filters.term = None`.
 - `interpretation` is built from a format string over the resolved filters. Deterministic
   prose, never model prose.

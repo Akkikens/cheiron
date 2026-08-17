@@ -1,4 +1,4 @@
-"""`BucketSet` — the single handoff from the engine into render (BUILD-PLAN §4)."""
+"""`BucketSet`: the single handoff from the engine into render (BUILD-PLAN §4)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class BucketSet:
     """The aggregation stopped at `max_buckets`, so values beyond it were **never counted**.
 
     Distinct from narrowing, and the distinction is load-bearing: nothing here knows how many
-    values were skipped, so no denominator can be quoted and the overlap cannot be computed —
+    values were skipped, so no denominator can be quoted and the overlap cannot be computed
     the memberships that would have made it up do not exist.
     """
     omitted_buckets: int = 0
@@ -48,7 +48,7 @@ class BucketSet:
     The overlap arithmetic describes the *result*, not the chart, so it needs the full
     membership count even after narrowing. Without this, `bucket_sum` fell to the plotted
     categories while `with_value` still covered every study and the reported overlap went
-    negative — nonsense in the one block whose purpose is auditable arithmetic.
+    negative: nonsense in the one block whose purpose is auditable arithmetic.
     """
     sample_size: int | None = None
     sample_coverage: float | None = None

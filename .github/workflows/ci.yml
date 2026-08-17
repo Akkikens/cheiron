@@ -1,6 +1,6 @@
 # The gate every commit in this repo was required to pass, written down so it is checkable
 # rather than claimed. No step here touches the network: upstream is stubbed at the transport
-# seam, and the live scripts (verify_upstream.py, showcase.py) are deliberately not run in CI —
+# seam, and the live scripts (verify_upstream.py, showcase.py) are deliberately not run in CI
 # ClinicalTrials.gov is a public NIH service, and a CI job hammering it on every push is exactly
 # the discourtesy the client's rate limiting exists to avoid.
 

@@ -7,7 +7,7 @@ Ten chart types, ten real queries, no fixtures. This exists because "supports te
 is a claim, and a reviewer should be able to check it in one command rather than by reading the
 registry.
 
-Six cases run through the **deterministic planner** — no API key, no model. The other four need
+Six cases run through the **deterministic planner**: no API key, no model. The other four need
 intents the keyword matcher does not emit (a two-series comparison, a cross-tab, a scatter, a
 single-value KPI), so their `AnalysisPlan` is supplied directly through the same
 `ChatCompleter` seam the tests use. That is labelled per row: a plan the model would have

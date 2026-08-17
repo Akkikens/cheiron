@@ -1,6 +1,6 @@
 """Shared harness for the acceptance suite. SPEC §8.
 
-These tests assert on the **HTTP response**, not on internals — they are contract tests, and a
+These tests assert on the **HTTP response**, not on internals: they are contract tests, and a
 refactor that keeps the contract should not touch them. Every one is pinned to the recorded
 `dataTimestamp`, so a data update fails loudly rather than silently changing what "correct" means.
 """
@@ -70,7 +70,7 @@ def assert_contract(response: Any) -> None:
     ):
         assert field in coverage, f"coverage is missing {field}"
 
-    # Overlapping buckets must never carry a share — the whole they would imply does not exist.
+    # Overlapping buckets must never carry a share: the whole they would imply does not exist.
     if coverage["groupby_semantics"] == "overlapping":
         rows = body["visualization"]["data"]
         for row in rows if isinstance(rows, list) else []:

@@ -2,7 +2,7 @@
 
 Both exist because a chart type can promise a breakdown the data does not contain. Before this
 module, `intent=comparison` with two series returned a `grouped_bar_chart` whose every row was
-labelled with the *first* series and whose counts came from the base filter — a chart that
+labelled with the *first* series and whose counts came from the base filter: a chart that
 asserted a comparison nobody computed. That is precisely the fabrication the service exists to
 prevent, so both paths here either compute the breakdown for real or refuse.
 
@@ -60,7 +60,7 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
 
     `total` is the **sum of the per-series totals**, and that is disclosed rather than glossed:
     a study matching two series is counted in both, so the sum is not a population count. The
-    alternative — reporting only the base filter's total — would understate what was actually
+    alternative, reporting only the base filter's total, would understate what was actually
     queried, which is worse for a number labelled `total_matching_studies`.
     """
     warnings: list[str] = []
@@ -108,7 +108,7 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
 
     # A study is "inspected" if its series read every record, or if the sampler saw it. Mixing a
     # 1,000-of-100,000 series with a 900-of-1,000 series and averaging the two ratios claimed
-    # 45.5% of the result was inspected when the true figure is 1.9% — a mean of ratios over
+    # 45.5% of the result was inspected when the true figure is 1.9%: a mean of ratios over
     # different populations, disclosed as if it described one.
     inspected = 0
     sampled_any = False
@@ -119,7 +119,7 @@ def merge_panels(panels: Sequence[Panel], dim: Dimension) -> tuple[BucketSet, li
             sampled_any = True
         else:
             # complete_records read every record; server_counts counted every study exactly on
-            # the server. Neither is a sample, so both belong in the numerator — counting a
+            # the server. Neither is a sample, so both belong in the numerator: counting a
             # 200,000-study server_counts series as uninspected reported 0.2% coverage for a
             # chart whose larger half is exact, which understates exactness as badly as
             # overstating it misleads.
@@ -165,7 +165,7 @@ def crosstab_from_records(
     """Cross-tab in process, from records already fetched. Free in `complete_records` mode.
 
     A study contributes to every (primary, secondary) pair it carries, which for two multi-valued
-    dimensions is a product — the same overlap `meta.coverage` already discloses for one.
+    dimensions is a product: the same overlap `meta.coverage` already discloses for one.
     """
     tally: dict[tuple[str, str], int] = {}
     for study in studies:
@@ -249,7 +249,7 @@ def unaffordable_crosstab(
                 "requests_available": affordable,
                 "suggestion": (
                     "Narrow the filters so fewer than the record-mode threshold of studies "
-                    "match — the cross-tab is then computed in process at no extra cost — or "
+                    "match, so the cross-tab is computed in process at no extra cost, or "
                     "drop secondary_group_by and ask for one dimension at a time."
                 ),
             }

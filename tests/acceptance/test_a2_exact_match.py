@@ -1,4 +1,4 @@
-"""A2 — exact-match discipline. SPEC §8.
+"""A2: exact-match discipline. SPEC §8.
 
 `AREA[LeadSponsorName]"Merck"` returns 2,733 by substring; the exact count for
 "Merck Sharp & Dohme LLC" is 1,841 (notes §2). A sponsor chart must report 1,841.

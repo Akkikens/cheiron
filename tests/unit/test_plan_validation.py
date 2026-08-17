@@ -236,7 +236,7 @@ def test_these_intents_are_now_plannable(intent: Intent, vocab: Vocabulary) -> N
     """`enrollment_count` exists, so SPEC §6.1's scatter_plot and histogram rows are reachable.
 
     This test previously asserted the opposite. The rule was always keyed on the registry rather
-    than hardcoded, so adding one dimension row lifted the refusal — which is what the
+    than hardcoded, so adding one dimension row lifted the refusal, which is what the
     monkeypatch test below was written to guarantee, and now demonstrates for real.
     """
     plan = a_plan(intent=intent, group_by=GroupBy(dimension="enrollment_count"))
@@ -260,7 +260,7 @@ def test_these_intents_need_the_quantitative_dimension_on_group_by(
 def test_these_intents_parse_and_validate(intent: Intent, vocab: Vocabulary) -> None:
     """`json_schema_strict()` publishes every intent as the model's action space.
 
-    A plan carrying one must be *parseable* whatever the verdict — otherwise T09's repair loop
+    A plan carrying one must be *parseable* whatever the verdict: otherwise T09's repair loop
     sees a malformed response rather than an unservable request, and repairs the wrong thing.
     """
     plan = AnalysisPlan.model_validate(
@@ -283,7 +283,7 @@ def test_the_refusal_returns_if_the_quantitative_dimension_goes_away(
     """The rule reads the registry rather than hardcoding either verdict.
 
     Kept inverted from its original direction so the refusal path stays covered now that the
-    real registry lifts it — and so the message keeps naming the real blocker rather than the
+    real registry lifts it, and so the message keeps naming the real blocker rather than the
     symptom.
     """
     monkeypatch.setattr(validate_module, "QUANTITATIVE_KEYS", frozenset())

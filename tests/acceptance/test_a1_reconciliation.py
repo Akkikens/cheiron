@@ -1,4 +1,4 @@
-"""A1 — reconciliation. SPEC §8.
+"""A1: reconciliation. SPEC §8.
 
 `query.intr=pembrolizumab` grouped by phase must reconcile to a stated arithmetic:
 
@@ -7,7 +7,7 @@
     Σ 3,273 · overlap 515
 
 The buckets legitimately sum to more than the total because `phases` is multi-valued. That is
-the finding, not a bug — and reporting it in numbers is what separates this from a chart that
+the finding, not a bug, and reporting it in numbers is what separates this from a chart that
 quietly does not add up.
 """
 

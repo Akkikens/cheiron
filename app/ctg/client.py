@@ -4,7 +4,7 @@ Implements SPEC §7's upstream courtesy and every transport gotcha in `CTG-API-N
 The governing asymmetry, measured in T01: upstream fails **loudly** on a malformed argument
 (400, `text/plain`) and **silently** on a missing scope (HTTP 200, wrong number). You cannot
 tell which category a parameter is in without testing it, so nothing here defaults a missing
-field to a benign value — an absent `totalCount` is an error, not a zero.
+field to a benign value: an absent `totalCount` is an error, not a zero.
 """
 
 from __future__ import annotations
@@ -185,7 +185,7 @@ class CTGTransport:
         self._attempts = attempts
         # How long a `Retry-After` may actually be slept for, per attempt. Divided by the
         # attempt count rather than halved: a `get()` sleeps between every attempt, so "half the
-        # budget" still added up to the whole budget across two retries — the same mistake as
+        # budget" still added up to the whole budget across two retries: the same mistake as
         # the flat 30s ceiling it replaced, one step smaller. No floor, either: flooring at 1s
         # exceeded the budget outright when REQUEST_BUDGET_MS was configured below 2000.
         #

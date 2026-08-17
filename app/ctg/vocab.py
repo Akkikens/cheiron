@@ -1,6 +1,6 @@
 """Live enum vocabulary and the human labels rendered from it.
 
-Values come from `/studies/enums` and are **never hardcoded** (SPEC §3, notes §7) — the
+Values come from `/studies/enums` and are **never hardcoded** (SPEC §3, notes §7): the
 lists in the notes are reference only. Labels are the opposite: they are code, never model
 output (SPEC §4.1), so they live here as a deterministic rule plus a small override map.
 """

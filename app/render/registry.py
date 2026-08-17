@@ -1,7 +1,7 @@
 """Chart selection. SPEC §6.1.
 
 A deterministic function of `(intent, cardinality, series count, partition, mode)`. `viz_hint`
-breaks ties only and is discarded — with a warning — when it would violate a safety rule.
+breaks ties only and is discarded, with a warning, when it would violate a safety rule.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def _primary(
             return ChartType.SCATTER_PLOT
         # A scatter plots one point per study, so it needs the records themselves. Above the
         # threshold there are none in memory, and plotting bin midpoints as if they were studies
-        # would invent data — the same reasoning that keeps network_graph in record mode.
+        # would invent data: the same reasoning that keeps network_graph in record mode.
         warnings.append(
             f"scatter_plot plots one point per study and needs complete_records mode; this "
             f"result has {bucketset.total:,} studies under {bucketset.mode!r}, so returning a "
@@ -138,7 +138,7 @@ def _hint_is_safe(
     #
     # The flag to read is the dimension whose values become the *segments*: the secondary when
     # there is one, the primary otherwise. Reading the primary let a stacked hint through on a
-    # status-by-phase cross-tab — segments that sum to more than their bar, which is the exact
+    # status-by-phase cross-tab: segments that sum to more than their bar, which is the exact
     # chart §6.1 calls non-overridable, waved past by the override check itself.
     segment_dim = resolve(plan.secondary_group_by.dimension) if plan.secondary_group_by else dim
     if hint is ChartType.STACKED_BAR_CHART and not segment_dim.partition:

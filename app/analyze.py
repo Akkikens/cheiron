@@ -110,7 +110,7 @@ async def analyze(
     version = await client.version()
 
     # SPEC §7: keyed on the plan *and* the dataset revision, so an entry cannot outlive the data
-    # it describes. `retrieved_at` on a hit is deliberately the original retrieval time — these
+    # it describes. `retrieved_at` on a hit is deliberately the original retrieval time: these
     # numbers were fetched then, and restamping them with "now" would overstate their freshness.
     cache_key = result_cache_key(
         plan.normalized_key(), version.data_timestamp, options_cache_key(request.options)
@@ -150,7 +150,7 @@ async def analyze(
         if len(plan.series) > 1:
             # A comparison is N independent analyses. Each series gets its own preflight, mode
             # selection, and fan-out, because each has its own filters and therefore its own
-            # result size — one series can be small enough for record mode while another is not.
+            # result size: one series can be small enough for record mode while another is not.
             panels = await _run_series(plan, dim, ctx, settings=settings)
             bucketset, merge_warnings = merge_panels(panels, dim)
             ctx.warnings.extend(merge_warnings)
@@ -162,7 +162,7 @@ async def analyze(
         if pre is None:
             pass
         elif pre.total == 0:
-            # A4: empty result, never a fabricated row. Skip mode selection entirely — a zero
+            # A4: empty result, never a fabricated row. Skip mode selection entirely: a zero
             # total would otherwise pick complete_records and page an empty set.
             bucketset = BucketSet(
                 buckets=[],
@@ -199,14 +199,14 @@ async def analyze(
     elif cells:
         # `elif cells:` and not `is not None`: an empty cross-tab means no study had *both*
         # dimensions, which is a data fact, not a cap. Narrowing to an empty key set emptied the
-        # bucket set and reported "Showing 0 of 5 values, the rest cut by options.max_buckets" —
+        # bucket set and reported "Showing 0 of 5 values, the rest cut by options.max_buckets"
         # naming the wrong cause for a chart that has nothing to draw.
         bucketset = bucketset.plotted_only(
             plotted_crosstab_keys(cells, request.options.max_buckets)
         )
     elif cells is not None:
         # No study carried both dimensions. Rendering an empty cross-tab would leave coverage
-        # describing categories that appear nowhere in the visualization — the same chart/result
+        # describing categories that appear nowhere in the visualization: the same chart/result
         # mismatch narrowing exists to prevent, in the other direction. Fall back to the primary
         # distribution, which is a real answer to most of the question, and say what is missing.
         ctx.warnings.append(
@@ -217,7 +217,7 @@ async def analyze(
         )
         cells = None
         # Clearing `cells` alone was not enough: `select_chart` reads the *plan*, so it still
-        # returned grouped/stacked and `render` stamped a constant "all" series on every row —
+        # returned grouped/stacked and `render` stamped a constant "all" series on every row
         # a chart advertising a breakdown the data does not contain, which is the fabrication
         # class this service exists to prevent. Worse for a stacked pick over an overlapping
         # primary: that is precisely what the viz_hint safety rule refuses to allow.
@@ -295,7 +295,7 @@ def _unapplied_subject_warning(plan: AnalysisPlan, result: PlanResult) -> list[s
 
     The keyword planner deliberately never mines the question for a subject: guessing a drug
     name produces a confident wrong filter. But staying silent about it produced something
-    worse — "trials by phase for melanoma" charted all 598,690 studies in the registry with an
+    worse: "trials by phase for melanoma" charted all 598,690 studies in the registry with an
     empty `filters_applied` and no warning at all. Not guessing is a design choice; not
     disclosing is a wrong answer with a straight face.
     """
@@ -331,7 +331,7 @@ async def _plan(
     """LLM when enabled, heuristic otherwise. A planning miss is unplannable, not invalid.
 
     With `LLM_ENABLED=false` the planner is never constructed, so the OpenAI SDK is never
-    imported and no key is read — SPEC A6's degraded mode is an absence of code, not a branch
+    imported and no key is read. SPEC A6's degraded mode is an absence of code, not a branch
     inside it.
     """
     if not settings.llm_enabled or completer is None:
@@ -463,7 +463,7 @@ async def _aggregate(
 async def _once_more_on_new_data[T](ctx: RunContext, run: Callable[[], Awaitable[T]]) -> T:
     """SPEC §7: if the dataset moved mid-fan-out, redo the whole group-by once, then fail.
 
-    Retrying the *whole* group-by rather than the failed bucket is the point — the guarantee is
+    Retrying the *whole* group-by rather than the failed bucket is the point: the guarantee is
     that no chart ever mixes two dataset revisions, and a per-bucket retry would produce exactly
     that mixture.
 

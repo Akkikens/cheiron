@@ -175,7 +175,7 @@ ENROLLMENT_BINS: Final[tuple[tuple[int, int | None], ...]] = (
 Equal-width bins are useless here: enrollment spans 0 to 188,814,085 (notes §6.4), so linear
 bins would put essentially every study in the first one. The open top bin absorbs the
 `99999999` placeholders and the genuine outliers together, which is why record mode winsorizes
-before computing enrollment *metrics* — the histogram counts studies, so it does not need to.
+before computing enrollment *metrics*: the histogram counts studies, so it does not need to.
 """
 
 

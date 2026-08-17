@@ -8,7 +8,7 @@ engine reads every record and gets exactness, all dimensions, and citations for 
 the engine stops reading records and asks the server to count instead, at a cost independent of
 result size.
 
-The number is a property of upstream's paging, not a tuning knob — that is why it is derived
+The number is a property of upstream's paging, not a tuning knob: that is why it is derived
 from `RECORD_MODE_THRESHOLD` in one place and recorded here rather than in a comment at the
 call site.
 """
@@ -39,11 +39,11 @@ class Preflight:
 def select_mode(total: int, dim: Dimension, threshold: int) -> AggregationModeName:
     """SPEC §5.2's table, as one expression with no hidden fourth case.
 
-    "Closed vocabulary" is **not** the same as "has an enum". `start_year` is closed — SPEC §5.1
-    calls it a derived range — but carries `enum_name=None` because its values come from a date
+    "Closed vocabulary" is **not** the same as "has an enum". `start_year` is closed. SPEC §5.1
+    calls it a derived range, but carries `enum_name=None` because its values come from a date
     range rather than `/studies/enums`. Testing `enum_name is not None` alone routed every trend
     question over the threshold into the sampling mode, where year labels were confirmed with
-    `COVERAGE[FullMatch]"2021"` instead of `RANGE[2021-01-01,2021-12-31]` — confirming to zero,
+    `COVERAGE[FullMatch]"2021"` instead of `RANGE[2021-01-01,2021-12-31]`: confirming to zero,
     dropping every bucket, and returning an empty chart for the most common question there is.
     """
     if total <= threshold:
@@ -76,8 +76,8 @@ def unimplemented_mode(mode: AggregationModeName, total: int, dim: Dimension) ->
 
     Kept rather than deleted because the alternative to an explicit refusal is a silent
     downgrade, and every available downgrade lies. Falling back from
-    `sampled_then_confirmed` to `server_counts` is impossible — there is no enum to fan out
-    over — and falling back to a truncated `complete_records` read returns a relevance-ranked
+    `sampled_then_confirmed` to `server_counts` is impossible: there is no enum to fan out
+    over, and falling back to a truncated `complete_records` read returns a relevance-ranked
     slice that looks authoritative and is not (SPEC §5.4). If a fourth mode is ever added and
     left unwired, this is what the caller gets instead of a plausible wrong chart.
     """

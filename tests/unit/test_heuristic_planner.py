@@ -48,7 +48,7 @@ def plan_of(
     )
 
 
-# (question, request kwargs, expected plan) — asserted whole, not field by field.
+# (question, request kwargs, expected plan): asserted whole, not field by field.
 GOLDEN: list[tuple[str, dict[str, Any], AnalysisPlan]] = [
     (
         "Which interventions are studied together?",
@@ -325,7 +325,7 @@ async def test_suggestions_are_questions_this_planner_actually_answers(vocab: Vo
 
 
 def test_template_precedence_is_the_documented_order() -> None:
-    """Specific intents first, broad ones last — first keyword hit wins, so order is behaviour.
+    """Specific intents first, broad ones last: first keyword hit wins, so order is behaviour.
 
     `network`, `enrollment`, `sponsor_class`, `intervention_type`, `study_type` and `condition`
     all sit above the original five because their keywords are narrower. `study_type` in
@@ -388,7 +388,7 @@ async def test_the_five_templates_plan_with_no_api_key_present(
     """T05's done-when, and half of SPEC A6.
 
     The `settings` fixture is already keyless, so this asserts the precondition rather than
-    assuming it — a planner that quietly needed a key would still pass every test above.
+    assuming it: a planner that quietly needed a key would still pass every test above.
     """
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     assert settings.openai_api_key is None

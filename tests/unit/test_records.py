@@ -205,7 +205,7 @@ async def test_serial_paging_repeats_every_non_paging_param(settings: Settings) 
         for r in upstream.requests
         if r.url.path.endswith("/studies") and r.url.params.get("countTotal") != "true"
     ]
-    # 1000 + 1000 + 400 — the third page is the remainder, not an empty trailing call.
+    # 1000 + 1000 + 400: the third page is the remainder, not an empty trailing call.
     assert len(page_requests) == 3
 
     def material(request: httpx.Request) -> dict[str, str]:

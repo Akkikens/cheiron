@@ -1,7 +1,7 @@
 """Run the demo's renderers for real, via node, and check what they drew.
 
 `test_countries_and_demo.py` proves the demo *handles* every chart type; this proves the drawing
-is real — one rect per row, one line per edge, nothing dropped silently. The assertions live in
+is real: one rect per row, one line per edge, nothing dropped silently. The assertions live in
 `test_demo_renders.js` because running the page's own code is the only way to test the page's own
 code; this module is the pytest entry point, and it skips rather than fails where node is absent
 so the suite stays runnable on a machine that has only Python.

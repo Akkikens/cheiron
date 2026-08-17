@@ -5,11 +5,11 @@ Two of them, with different keys because they answer different questions:
 - The **plan cache** maps a normalized question to an `AnalysisPlan`. A repeat question skips
   the model entirely, which is the "it is cheap" property in SPEC §1's table.
 - The **result cache** maps `(plan.normalized_key(), data_timestamp)` to a finished response.
-  The timestamp in the key is what makes it correct — the TTL is only housekeeping, because
+  The timestamp in the key is what makes it correct: the TTL is only housekeeping, because
   upstream refreshes on weekdays around 14:00 UTC and a stale entry would otherwise outlive
   the dataset it describes.
 
-Question text is normalized by stripping, collapsing whitespace, and case-folding — and nothing
+Question text is normalized by stripping, collapsing whitespace, and case-folding, and nothing
 further. Stemming or stopword removal would make `"trials in France"` and `"trials for France"`
 collide, and while they probably mean the same thing, "probably" is not a good enough reason to
 serve one question's numbers under another question's name.

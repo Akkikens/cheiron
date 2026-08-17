@@ -1,7 +1,7 @@
 """`POST /analyze` response models. SPEC §4.
 
 Two SPEC rules are enforced here rather than trusted to the renderer, because both fail
-*plausibly* when broken — a chart still draws, it just lies:
+*plausibly* when broken: a chart still draws, it just lies:
 
 - every `encoding` channel's `field` must exist in every `data` row (SPEC §4.1);
 - no share/percentage key may appear when `groupby_semantics` is `overlapping`, since the
@@ -58,7 +58,7 @@ class Channel(BaseModel):
     bin_end: str | None = None
     """SPEC §6.2: a histogram's x channel names the row keys holding each bar's range.
 
-    A histogram bar spans an interval, so a renderer needs both edges — `field` alone gives it a
+    A histogram bar spans an interval, so a renderer needs both edges: `field` alone gives it a
     label to print, not a width to draw."""
 
 
@@ -66,8 +66,8 @@ class Visualization(BaseModel):
     """SPEC §4.1.
 
     `encoding` and `data` are intentionally loose containers. Channels vary by chart type
-    (§6.2) — `table` carries `columns[]`, `network_graph` carries node/edge descriptions rather
-    than channels — so the shape is validated per type below instead of being forced into one
+    (§6.2): `table` carries `columns[]`, `network_graph` carries node/edge descriptions rather
+    than channels, so the shape is validated per type below instead of being forced into one
     static type.
     """
 
@@ -120,7 +120,7 @@ class Visualization(BaseModel):
 
 
 class Coverage(BaseModel):
-    """SPEC §4.3. Every field is required on every response — nullable, but never absent.
+    """SPEC §4.3. Every field is required on every response: nullable, but never absent.
 
     A bare `truncated: true` is not acceptable anywhere in this API, so the nullable fields are
     explicit `None` rather than omitted: the caller can tell "not sampled" from "forgot to say".

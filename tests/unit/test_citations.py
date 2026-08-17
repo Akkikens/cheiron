@@ -1,4 +1,4 @@
-"""Citation sampling. SPEC §4.2 — Rule 2 is the whole task."""
+"""Citation sampling. SPEC §4.2. Rule 2 is the whole task."""
 
 from __future__ import annotations
 

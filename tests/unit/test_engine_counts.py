@@ -2,7 +2,7 @@
 
 The A1 numbers below are live measurements, re-verified 2026-08-16 against
 `query.intr=pembrolizumab`. They are pinned here rather than tolerated, because the point of A1
-is that the buckets reconcile to a stated arithmetic — a test that accepts drift cannot tell a
+is that the buckets reconcile to a stated arithmetic: a test that accepts drift cannot tell a
 data update from a broken predicate.
 """
 
@@ -319,7 +319,7 @@ def test_unimplemented_modes_refuse_rather_than_downgrade() -> None:
     """The guard's shape, for the day a fourth mode is added and left unwired.
 
     All three modes in `AggregationModeName` are implemented as of T11, so this can only fire
-    defensively — but a silent downgrade is the failure it exists to prevent, and deleting the
+    defensively, but a silent downgrade is the failure it exists to prevent, and deleting the
     guard is how that failure gets reintroduced.
     """
     error = unimplemented_mode("sampled_then_confirmed", 51_610, REGISTRY["lead_sponsor"])
@@ -417,7 +417,7 @@ async def test_bucket_values_come_from_the_live_enum_not_a_literal(settings: Set
 async def test_the_synthetic_missing_bucket_is_never_a_query_value(settings: Settings) -> None:
     """`sort_order` is SPEC §4's display array and includes MISSING, which is not an enum value.
 
-    Enumerating it as a bucket yields `AREA[Phase]\\MISSING` — the escaped literal word — which
+    Enumerating it as a bucket yields `AREA[Phase]\\MISSING`, the escaped literal word, which
     returns zero at HTTP 200 and double-counts the unclassified probe.
     """
     upstream = a1_upstream()
@@ -500,7 +500,7 @@ async def test_a_changed_data_timestamp_aborts_the_group_by(settings: Settings) 
 
 
 async def test_the_timestamp_recheck_is_a_live_read(settings: Settings) -> None:
-    """If it read ctx.data_timestamp instead, the check could never fail — SPEC §7 theatre."""
+    """If it read ctx.data_timestamp instead, the check could never fail. SPEC §7 theatre."""
     upstream = a1_upstream()
     ctx = await a_context(settings, upstream)
     plan, dim = a1_plan(), REGISTRY["phase"]

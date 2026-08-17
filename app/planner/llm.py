@@ -2,7 +2,7 @@
 
 **The model's entire job is question → `AnalysisPlan`.** It never sees study data, so it cannot
 invent a count. Everything downstream of this module operates on exact upstream responses, which
-is the property the whole service is built around — and
+is the property the whole service is built around: and
 `test_no_study_data_reaches_the_model` is what proves it holds in the implementation rather than
 in the prose.
 
@@ -11,7 +11,7 @@ Three things keep a misbehaving model from becoming a wrong answer:
 1. **Structured Outputs with `strict: true`**, using the schema published by
    `AnalysisPlan.json_schema_strict()` so the prompt shape and the parsed shape cannot drift.
 2. **A repair loop of at most two retries** (three model calls, SPEC §7's budget), fed the
-   validator's own sentences — they are written to be actionable for exactly this reason.
+   validator's own sentences: they are written to be actionable for exactly this reason.
 3. **A terminal fallback to the heuristic planner.** The request never fails because the model
    misbehaved; a model outage degrades coverage, not availability (SPEC §5.5).
 
@@ -42,7 +42,7 @@ from app.planner.validate import validate_plan
 logger = logging.getLogger("cheiron.planner")
 
 MAX_ATTEMPTS: Final = 3
-"""One initial call plus at most two repairs — SPEC §3 and §7's model-call budget."""
+"""One initial call plus at most two repairs. SPEC §3 and §7's model-call budget."""
 
 SCHEMA_NAME: Final = "analysis_plan"
 
@@ -53,7 +53,7 @@ You must never produce a count, a total, a study identifier, a sponsor name you 
 or any other factual claim about the data. You do not have the data. The plan you emit is \
 executed by deterministic code that queries ClinicalTrials.gov and computes every number.
 
-The `interpretation` field describes what WILL BE COMPUTED, in descriptive terms — for example \
+The `interpretation` field describes what WILL BE COMPUTED, in descriptive terms: for example \
 "Annual count of interventional trials studying pembrolizumab, 2015-2025." It must never state \
 a result, and must never contain a number other than a year.
 
@@ -119,8 +119,8 @@ class LLMPlanner:
             except Exception as exc:
                 # Any model failure degrades to the fallback; it never fails the request.
                 #
-                # The exception *type* only. Provider messages quote the request back — an
-                # OpenAI 401 includes the partially-masked API key — and this string reaches an
+                # The exception *type* only. Provider messages quote the request back: an
+                # OpenAI 401 includes the partially-masked API key, and this string reaches an
                 # anonymous caller through meta.warnings. The detail belongs in the log.
                 logger.warning("planner: model call failed", exc_info=exc)
                 return await self._degrade(req, vocab, type(exc).__name__)
@@ -187,7 +187,7 @@ def _readable(error: Mapping[str, Any]) -> str:
 def _system_prompt(vocab: Vocabulary) -> str:
     """System prompt plus the live vocabulary and dimension registry.
 
-    Both are injected from the loaded vocabulary rather than hardcoded — SPEC §3 requires the
+    Both are injected from the loaded vocabulary rather than hardcoded. SPEC §3 requires the
     plan to be validated against the live enums, and a prompt listing stale values would produce
     plans that fail validation for reasons the model cannot see.
     """
@@ -225,7 +225,7 @@ def _user_prompt(req: AnalyzeRequest) -> str:
 
 
 def _repair_prompt(errors: Sequence[str]) -> str:
-    """The validator's own sentences, verbatim — they name the field and a valid alternative."""
+    """The validator's own sentences, verbatim: they name the field and a valid alternative."""
     listed = "\n".join(f"  - {error}" for error in errors)
     return (
         f"That plan is invalid:\n{listed}\n\n"

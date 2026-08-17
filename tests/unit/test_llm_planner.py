@@ -1,7 +1,7 @@
 """The LLM planner, its repair loop, and the caches. SPEC §1, §3, §7.
 
 No test here reaches OpenAI. The planner takes a `ChatCompleter`, so the repair loop, the
-fallback, and the cache are all driven from scripted responses — which is also why the suite
+fallback, and the cache are all driven from scripted responses, which is also why the suite
 runs with no API key present at all.
 """
 

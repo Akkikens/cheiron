@@ -1,4 +1,4 @@
-# T09 — LLM planner, repair loop, and plan cache
+# T09: LLM planner, repair loop, and plan cache
 
 **Est. 30 min · depends on: T05, T07 · unblocks: T12**
 
@@ -13,7 +13,7 @@ class LLMPlanner:
 ```
 
 Uses the OpenAI Structured Outputs API with `strict: true` and the schema from
-`AnalysisPlan.json_schema_strict()` (T04) — one source of truth for the shape, so the model
+`AnalysisPlan.json_schema_strict()` (T04): one source of truth for the shape, so the model
 contract and the Pydantic model can never drift.
 
 ### Prompt construction
@@ -22,13 +22,13 @@ System prompt states, in this order:
 1. The job: translate a question into an `AnalysisPlan`. Nothing else.
 2. The prohibition, explicitly: **never** produce a count, a study total, a sponsor name you
    were not given, or any factual claim. `interpretation` describes *what will be
-   computed*, in the future/descriptive tense — not what the answer is.
+   computed*, in the future/descriptive tense: not what the answer is.
 3. The **live vocabulary**, injected from `vocab` (SPEC §3: re-validated against
    `/studies/enums`; never hardcode enum lists into the prompt string).
 4. The dimension registry keys with their partition flags, so the model doesn't propose a
    dimension the engine can't group by.
 5. The structured hints from the request, flagged as **hard constraints it must not
-   contradict** (SPEC §2.1). `enforce_hard_constraints` (T05) is the belt to this braces —
+   contradict** (SPEC §2.1). `enforce_hard_constraints` (T05) is the belt to this braces
    run it regardless of what the model returns.
 
 Few-shot: 3 examples, reusing the golden cases from T05's heuristic tests so the two
@@ -49,7 +49,7 @@ still bad → heuristic fallback, planner="heuristic_fallback", warning recorded
 ```
 
 At most **2 repair attempts** (3 model calls total, matching SPEC §7's budget). The request
-**never** fails because the model misbehaved — every terminal path lands on the heuristic
+**never** fails because the model misbehaved: every terminal path lands on the heuristic
 planner. If the heuristic also can't plan, *then* `422 unplannable_query`.
 
 Also fall back to heuristic (not error) on: API timeout, rate limit, malformed response,
@@ -61,18 +61,18 @@ outage degrades coverage, not availability (SPEC §5.5).
 `app/cache.py`: a `Cache` protocol plus a `TTLCache`-backed in-process implementation.
 
 - **Plan cache** keyed on `(normalized question text, sorted structured fields)` → the plan.
-  A repeat question skips the model entirely — this is the "it is cheap" property in SPEC
+  A repeat question skips the model entirely: this is the "it is cheap" property in SPEC
   §1's table, so make it observable: `meta.timing_ms.plan` near zero on a hit, and count
   cache hits in a counter surfaced at `/health`.
 - **Result cache** keyed on `(plan.normalized_key(), data_timestamp)` (SPEC §7). Upstream
   refreshes weekdays ~14:00 UTC (notes intro), so a 24 h TTL is right, but the
-  `data_timestamp` in the key is what actually guarantees correctness — the TTL is only
+  `data_timestamp` in the key is what actually guarantees correctness: the TTL is only
   housekeeping.
 - Normalize question text for the plan key: strip, collapse whitespace, casefold. Do **not**
-  stem or drop stopwords — `"trials in France"` and `"trials for France"` are the same query
+  stem or drop stopwords: `"trials in France"` and `"trials for France"` are the same query
   but proving that isn't worth a wrong cache hit.
 
-## Tests (all mocked — no live OpenAI calls in the suite)
+## Tests (all mocked: no live OpenAI calls in the suite)
 
 - A stubbed client returning a valid plan → `planner="llm"`, one model call.
 - Returns an invalid enum, then valid → `planner="llm_repaired"`, two calls, and the repair
@@ -96,5 +96,5 @@ outage degrades coverage, not availability (SPEC §5.5).
   vocabulary, and the dimension keys. This is the one test that proves SPEC §1's thesis
   holds in the implementation, so make it explicit and name it
   `test_no_study_data_reaches_the_model`.
-- Log every model call's token counts. You are on API billing now — a runaway repair loop
+- Log every model call's token counts. You are on API billing now: a runaway repair loop
   should be visible, and the ≤3-call budget makes the worst case bounded and provable.

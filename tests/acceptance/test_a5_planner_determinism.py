@@ -1,7 +1,7 @@
-"""A5 — planner determinism. SPEC §8.
+"""A5: planner determinism. SPEC §8.
 
 Asserts the **IR**, not prose: a fixed question yields a fixed `AnalysisPlan`. Run at the planner
-level rather than through HTTP on purpose — the plan is the contract being pinned here, and
+level rather than through HTTP on purpose: the plan is the contract being pinned here, and
 routing twenty questions through the engine would test the engine's stubs instead.
 """
 
@@ -74,7 +74,7 @@ async def test_a5_a_question_yields_a_stable_plan(
 
     assert first.plan.intent.value == intent
     assert first.plan.group_by.dimension == dimension
-    # The whole IR, not just the two fields under test — a drift anywhere else fails here.
+    # The whole IR, not just the two fields under test: a drift anywhere else fails here.
     assert first.plan == second.plan
 
 

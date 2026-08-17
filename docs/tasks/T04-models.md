@@ -1,19 +1,19 @@
-# T04 — Request, plan, and response models
+# T04: Request, plan, and response models
 
 **Est. 20 min · depends on: T01 · unblocks: T05, T07**
 
-Pure Pydantic v2. No I/O, no business logic. Transcribe SPEC §2, §3, §4 exactly — where
+Pure Pydantic v2. No I/O, no business logic. Transcribe SPEC §2, §3, §4 exactly: where
 this task and SPEC disagree, SPEC wins.
 
 ## `app/models/request.py` (SPEC §2)
 
-`AnalyzeRequest` with `model_config = ConfigDict(extra="forbid")` — this is how §2.1's
+`AnalyzeRequest` with `model_config = ConfigDict(extra="forbid")`: this is how §2.1's
 "unknown top-level fields are **rejected** (422), not ignored" is satisfied. Same for
 `Options`.
 
 Fields and validation exactly per the §2.1 table: `query` required, 3–1000 chars **after
 strip**; `drug_name`/`condition`/`sponsor` ≤200; `country` ≤100; `phase`/`status`/
-`study_type` validated against the **live** vocabulary (not a hardcoded Literal — leave a
+`study_type` validated against the **live** vocabulary (not a hardcoded Literal: leave a
 `validate_against(vocab)` method for the route to call, since Pydantic can't reach the
 async loader); `start_year`/`end_year` 1900–2100 with a model validator for
 `start_year <= end_year`.
@@ -67,14 +67,14 @@ Two required helpers:
 `aggregation_mode`, `groupby_semantics`, `bucket_sum`, `unclassified_count`,
 `overlap_note` (nullable), `sample_size` (nullable), `sample_coverage` (nullable).
 
-`data` rows are `list[dict[str, Any]]` — the key set is chart-type dependent (flat rows,
+`data` rows are `list[dict[str, Any]]`: the key set is chart-type dependent (flat rows,
 or `{nodes, edges}` for `network_graph`), so don't over-model it. Do add a validator
 asserting every `encoding` channel's `field` exists in **every** `data` row (SPEC §4.1:
 "`field` always names a key present in every `data` row"). For `network_graph`, skip that
 check and instead assert `data` has exactly `nodes` and `edges`.
 
 Forbid a `share_of_total` / `percentage` / `share` key in any `data` row when
-`coverage.groupby_semantics == "overlapping"` — SPEC §6.1 makes this non-overridable, so
+`coverage.groupby_semantics == "overlapping"`. SPEC §6.1 makes this non-overridable, so
 enforce it in the type system rather than trusting the renderer.
 
 ## Tests

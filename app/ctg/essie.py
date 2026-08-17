@@ -5,13 +5,13 @@ is written so the dangerous expressions cannot be built at all:
 
 - `full_match` requires an `area`, because T01 measured that a bare
   `COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` is valid Essie, returns HTTP 200, and counts
-  **4591** against the correct 1841. Unscoped is not an error upstream — it is a wrong answer
+  **4591** against the correct 1841. Unscoped is not an error upstream: it is a wrong answer
   that looks like a right one.
 - `escape` is applied to user text unconditionally. Left off, notes §2 shows
   `AREA[LeadSponsorName]COVERAGE[FullMatch]"Merck" OR AREA[Phase]PHASE3` returning 49,659:
   the injected clause executes.
 
-The legacy facet-filter parameter is never used anywhere in this codebase — it returns 0 with
+The legacy facet-filter parameter is never used anywhere in this codebase: it returns 0 with
 HTTP 200 on a bad option key (notes §2), and a test greps `app/` to keep it that way.
 """
 
@@ -58,7 +58,7 @@ class Essie:
     def escape(text: str) -> str:
         """Neutralise Essie syntax in user-supplied text.
 
-        Backslashes first, then quotes, then keywords — any other order double-escapes the
+        Backslashes first, then quotes, then keywords: any other order double-escapes the
         backslashes this function itself introduces. Over-escaping is safe: notes §2 records
         that a backslash on a non-operator is ignored upstream.
         """
@@ -104,12 +104,12 @@ class Essie:
 
     @staticmethod
     def missing(area: str) -> str:
-        """`AREA[Phase]MISSING` — the field is absent, which is not the same as `NA`."""
+        """`AREA[Phase]MISSING`: the field is absent, which is not the same as `NA`."""
         return f"AREA[{Essie._require_area(area)}]MISSING"
 
     @staticmethod
     def has_value(area: str) -> str:
-        """`AREA[ResultsFirstPostDate]RANGE[MIN,MAX]` — the field is present."""
+        """`AREA[ResultsFirstPostDate]RANGE[MIN,MAX]`: the field is present."""
         return f"AREA[{Essie._require_area(area)}]RANGE[{MIN},{MAX}]"
 
     @staticmethod
@@ -121,8 +121,8 @@ class Essie:
         """A quoted free-text term: `"breast cancer"`.
 
         Deliberately unscoped, unlike `full_match`. A phrase is evaluated against whichever
-        parameter carries it — `query.cond` gives 16,538 for `"breast cancer"` while
-        `filter.advanced` gives 17,819 (notes §2) — and that breadth is the point of a search
+        parameter carries it: `query.cond` gives 16,538 for `"breast cancer"` while
+        `filter.advanced` gives 17,819 (notes §2), and that breadth is the point of a search
         term. `full_match` is the opposite: it *claims* to be an exact field match, so an
         unscoped one is a wrong answer rather than a broader question.
         """
@@ -138,7 +138,7 @@ class Essie:
 
     @staticmethod
     def not_(include: str, exclude: str) -> str:
-        """`(A) NOT (B)` — Essie's `NOT` is **exclusion**, not logical negation.
+        """`(A) NOT (B)`. Essie's `NOT` is **exclusion**, not logical negation.
 
         It is binary for that reason: it narrows `include` by removing `exclude`, so there is
         no meaningful unary form to offer.
@@ -154,7 +154,7 @@ class Essie:
         """`AREA[LocationGeoPoint]DISTANCE[42.36,-71.06,50mi]`.
 
         Square brackets, not parens: `DISTANCE(...)` leaks a raw Java parser exception
-        (notes §2). `filter.geo` uses the paren form — two syntaxes for one concept.
+        (notes §2). `filter.geo` uses the paren form: two syntaxes for one concept.
         """
         if unit not in {"mi", "km"}:
             raise ValueError(f"radius unit must be mi or km, got {unit!r}")

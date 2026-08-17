@@ -2,7 +2,7 @@
 
 Both budgets are spent, not merely observed. A deadline that is only checked at the end is a
 deadline that has already been missed, so `spend` is called *before* each wave rather than
-after it, and it names what the allowance went on — "budget exhausted" alone tells an operator
+after it, and it names what the allowance went on: "budget exhausted" alone tells an operator
 nothing they can act on.
 """
 
@@ -19,7 +19,7 @@ from app.errors import CheironError, ErrorCode
 from app.models.request import Options
 
 
-class DataTimestampChanged(Exception):  # noqa: N818 — name frozen by BUILD-PLAN §4
+class DataTimestampChanged(Exception):  # noqa: N818  (name frozen by BUILD-PLAN §4)
     """Upstream published a new dataset mid-run; the numbers would mix two revisions.
 
     Carries both timestamps because "the data changed" is not actionable and "2026-08-14 became
@@ -35,7 +35,7 @@ class DataTimestampChanged(Exception):  # noqa: N818 — name frozen by BUILD-PL
         self.observed = observed
 
 
-class BudgetExhausted(Exception):  # noqa: N818 — name frozen by BUILD-PLAN §4
+class BudgetExhausted(Exception):  # noqa: N818  (name frozen by BUILD-PLAN §4)
     """The upstream request allowance ran out. Surfaced as 504, never as a partial answer."""
 
 

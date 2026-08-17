@@ -1,4 +1,4 @@
-"""`AnalysisPlan` — the only thing the model ever produces. SPEC §3.
+"""`AnalysisPlan`: the only thing the model ever produces. SPEC §3.
 
 Every field is a closed enum or a search string, which is what makes SPEC §1's thesis
 enforceable: the model cannot emit a number because there is nowhere in this shape to put one.
@@ -33,12 +33,12 @@ class Metric(StrEnum):
 
 
 class ChartType(StrEnum):
-    """The ten renderable types in SPEC §6.2 — and only those.
+    """The ten renderable types in SPEC §6.2, and only those.
 
     Notably absent: `pie_chart`. It appears in SPEC §6.1 only as something the safety rules
     forbid, and in A7 only as a `viz_hint` that must be *discarded*, so it is never an output.
     `AnalysisPlan.viz_hint` therefore drops the known-unrenderable hints rather than rejecting
-    the whole plan — see `_UNRENDERABLE_HINTS`.
+    the whole plan: see `_UNRENDERABLE_HINTS`.
     """
 
     BAR_CHART = "bar_chart"
@@ -114,7 +114,7 @@ class AnalysisPlan(BaseModel):
     metric: Metric = Metric.STUDY_COUNT
     viz_hint: ChartType | None = None
     interpretation: str = Field(max_length=300)
-    # Not part of the IR the model emits — only records that a forbidden hint arrived so the
+    # Not part of the IR the model emits: only records that a forbidden hint arrived so the
     # registry can put the discard in `meta.warnings` (SPEC A7) rather than dropping it silently.
     discarded_viz_hint: SkipJsonSchema[str | None] = None
 
@@ -155,7 +155,7 @@ class AnalysisPlan(BaseModel):
 
         `viz_hint` is **included**, despite being advisory. The registry consults it to break
         ties (bar/table/kpi, grouped/stacked), so two requests differing only in the hint can
-        legitimately get different chart types — and sharing a cache entry would serve the first
+        legitimately get different chart types, and sharing a cache entry would serve the first
         caller's chart to the second. Advice that is sometimes taken is part of the request.
         """
         canonical = _canonicalise(
@@ -198,7 +198,7 @@ def _strictify(schema: dict[str, Any]) -> dict[str, Any]:
     expressed as a nullable type rather than an absent key.
 
     `title` and `description` are dropped so the schema carries structure only. Pydantic
-    derives them from docstrings, and docstrings here are written for maintainers — one of them
+    derives them from docstrings, and docstrings here are written for maintainers: one of them
     names a private constant. Keeping them would mean an editorial change to a comment could
     alter model output with no test able to see it. Wording the model reads belongs in T09's
     prompt.

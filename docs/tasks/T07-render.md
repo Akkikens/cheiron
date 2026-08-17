@@ -1,15 +1,15 @@
-# T07 — Chart registry, encoding, and `/analyze` wired end-to-end
+# T07: Chart registry, encoding, and `/analyze` wired end-to-end
 
 **Est. 30 min · depends on: T06 · unblocks: T08, T09, T10**
 
-After this task the service actually works — with the heuristic planner, no LLM, real
+After this task the service actually works: with the heuristic planner, no LLM, real
 numbers, real coverage. SPEC §6, §4.1, §4.4.
 
 ## `app/render/registry.py`
 
 `select_chart(plan, bucketset, dim, options) -> tuple[ChartType, list[str]]` returning the
 type plus any warnings it generated. A **deterministic function** of
-`(intent, cardinality, series count, dim.partition, mode)` — SPEC §6.1's table in order:
+`(intent, cardinality, series count, dim.partition, mode)`. SPEC §6.1's table in order:
 
 | Condition | Type |
 |---|---|
@@ -25,14 +25,14 @@ type plus any warnings it generated. A **deterministic function** of
 | single scalar result | `kpi` |
 | `intent=list` or cardinality > `max_buckets` | `table` |
 
-`viz_hint` breaks **ties only** and is discarded when it violates a safety rule — record
+`viz_hint` breaks **ties only** and is discarded when it violates a safety rule: record
 the discard in `warnings` so the caller learns why they didn't get what they asked for.
 
 **`histogram` and `scatter_plot` are unreachable by construction, and that is asserted, not
 assumed.** Both rows require a quantitative dimension; SPEC §5.1's registry defines none, so
 T05's validation rejects those intents before the registry is ever consulted. Keep both rows
-in the table — they are the contract, and they become live the moment a quantitative
-dimension is added — but add a test that iterates every `(intent, cardinality, series,
+in the table: they are the contract, and they become live the moment a quantitative
+dimension is added, but add a test that iterates every `(intent, cardinality, series,
 partition, mode)` combination the registry can actually receive and asserts neither type is
 ever returned. If someone later adds an `enrollment_count` dimension, that test fails and
 tells them the two branches now need real coverage.
@@ -40,7 +40,7 @@ tells them the two branches now need real coverage.
 **Safety rules, non-overridable (SPEC §6.1):**
 1. No pie / donut / 100%-stacked on a `partition=False` dimension.
 2. No `share_of_total` field emitted when `groupby_semantics == "overlapping"`.
-3. No `network_graph` outside `complete_records` — downgrade to `grouped_bar_chart` and
+3. No `network_graph` outside `complete_records`: downgrade to `grouped_bar_chart` and
    warn with the reason and the observed total.
 
 Each rule gets a test that asserts both the rejection *and* the warning text.
@@ -61,18 +61,18 @@ the exact channels from SPEC §6.2. Requirements:
   value and roll the rest into `{"key": "OTHER", "label": "Other (N categories)"}` with an
   annotation naming N and the summed value. Never drop a bucket silently.
 - `title` derived from the plan by a format string (`"{intervention} Trials by {dim.label}"`,
-  title-cased) — **never model-authored prose** (SPEC §4.1).
+  title-cased): **never model-authored prose** (SPEC §4.1).
 - `subtitle` = `"{total:,} studies · ClinicalTrials.gov, data as of {date}"`. It carries the
   provenance; always emit it.
 - `choropleth_map` `location` channel carries both ISO-3166 alpha-3 and the raw upstream
   country name (`{"country": "France", "iso_a3": "FRA"}`); unmappable names go to a `table`
   fallback with a warning listing them.
-- `kpi` when the plan resolves to a single scalar; `table` for `intent=list` — SPEC §4.4:
+- `kpi` when the plan resolves to a single scalar; `table` for `intent=list`. SPEC §4.4:
   the service **always** returns a valid spec, never prose.
 - Zero results → empty `data`, `total_matching_studies: 0`, and a warning. Never a
   fabricated row (SPEC A4).
 
-## `app/main.py` — `POST /analyze`
+## `app/main.py`: `POST /analyze`
 
 ```
 validate → plan → preflight → aggregate → coverage → select_chart → render → meta
@@ -90,7 +90,7 @@ validate → plan → preflight → aggregate → coverage → select_chart → 
   unlanded mode → `422 unplannable_query` with an honest explanation.
 - **Planning failure is `unplannable_query`, never `invalid_request`** (both are 422, so the
   distinction is only visible in `code`). The request was well-formed; it's the question that
-  couldn't be served. `invalid_request` is reserved for schema and field validation — a caller
+  couldn't be served. `invalid_request` is reserved for schema and field validation: a caller
   filtering on `code` to decide whether to fix their payload or rephrase their question needs
   these separated. T05 records this in `validate_plan`'s docstring; honour it at the route.
 

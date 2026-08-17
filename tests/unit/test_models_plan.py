@@ -170,14 +170,14 @@ def test_key_includes_viz_hint_because_it_can_change_the_chart() -> None:
 
 
 def test_key_ignores_discarded_viz_hint() -> None:
-    """A server-side annotation on the plan, not model output — same treatment as viz_hint."""
+    """A server-side annotation on the plan, not model output: same treatment as viz_hint."""
     with_discard = a_plan(viz_hint="pie_chart")
     without = a_plan()
 
     assert with_discard.discarded_viz_hint == "pie_chart"
     assert without.discarded_viz_hint is None
     # An unrenderable hint is discarded before it reaches the registry, so unlike a live hint it
-    # cannot change the chart — and must not split the cache.
+    # cannot change the chart, and must not split the cache.
     assert with_discard.normalized_key() == without.normalized_key()
 
 
@@ -448,7 +448,7 @@ def assert_required_keys_present(node: Any, payload: Any, defs: dict[str, Any], 
 
     The drift this guards is narrow and specific: strict mode requires *every* property, so a
     field that Pydantic omits when serializing (a default, an unset optional) makes the model's
-    output shape and ours disagree — at any nesting level, not just the root.
+    output shape and ours disagree: at any nesting level, not just the root.
     """
     if isinstance(node, dict) and "$ref" in node:
         name = node["$ref"].rsplit("/", 1)[-1]

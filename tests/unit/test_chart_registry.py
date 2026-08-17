@@ -1,4 +1,4 @@
-"""Chart selection. SPEC §6.1 — every reachable combination, and the two unreachable types."""
+"""Chart selection. SPEC §6.1: every reachable combination, and the two unreachable types."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ def test_stacked_hint_on_overlapping_dimension_is_discarded() -> None:
 def test_histogram_and_scatter_are_not_returned_for_non_quantitative_intents() -> None:
     """The sweep that used to assert both types were unreachable.
 
-    `enrollment_count` now exists, so they are reachable — but only from their own intents. No
+    `enrollment_count` now exists, so they are reachable, but only from their own intents. No
     combination of the other six may produce either type, which is what keeps a distribution
     question from silently answering with a histogram.
     """

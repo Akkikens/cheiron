@@ -14,8 +14,8 @@ Retrieval, aggregation, chart selection, and citation are all deterministic code
 exact API responses. `tests/unit/test_llm_planner.py::test_no_study_data_reaches_the_model`
 asserts this holds in the implementation rather than only in the prose.
 
-The full contract is [`SPEC.md`](SPEC.md). The verified upstream behaviour it depends on —
-every claim measured with live calls — is [`docs/CTG-API-NOTES.md`](docs/CTG-API-NOTES.md).
+The full contract is [`SPEC.md`](SPEC.md). The upstream behaviour it depends on, every claim
+of it measured with live calls, is in [`docs/CTG-API-NOTES.md`](docs/CTG-API-NOTES.md).
 
 ---
 
@@ -39,7 +39,7 @@ docker run --rm -p 8000:8000 -e LLM_ENABLED=false cheiron
 Then open **<http://localhost:8000>** for a demo UI that renders whatever the API returns, or
 POST to `/analyze` directly. FastAPI's generated docs are at `/docs`.
 
-**Deployed: <https://cheiron-sigma.vercel.app>** — same routes, running the model. A free-form
+**Deployed: <https://cheiron-sigma.vercel.app>**: same routes, running the model. A free-form
 question the keyword planner cannot answer comes back with `meta.planner: "llm"`:
 
 ```bash
@@ -49,8 +49,8 @@ curl -s https://cheiron-sigma.vercel.app/analyze -H 'content-type: application/j
 ```
 
 It also runs with **no API key at all**. The deterministic planner covers eleven question
-shapes — phase, status, trend, country, sponsor, sponsor class, study type, intervention type,
-condition, enrollment size, and co-occurrence — so every example in §4 is reproducible in that
+shapes: phase, status, trend, country, sponsor, sponsor class, study type, intervention type,
+condition, enrollment size, and co-occurrence, so every example in §4 is reproducible in that
 mode:
 
 ```bash
@@ -61,7 +61,7 @@ curl localhost:8000/health
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Required only when `LLM_ENABLED=true` |
+| `OPENAI_API_KEY` |: | Required only when `LLM_ENABLED=true` |
 | `LLM_ENABLED` | `true` | `false` runs the deterministic planner alone, with no SDK import |
 | `OPENAI_MODEL` | `gpt-4.1` | Planning model |
 | `CTG_BASE_URL` | `https://clinicaltrials.gov/api/v2` | |
@@ -77,7 +77,7 @@ curl localhost:8000/health
 
 `POST /analyze` · `Content-Type: application/json`
 
-**Unknown top-level fields are rejected with 422**, not ignored — a typo'd filter that silently
+**Unknown top-level fields are rejected with 422**, not ignored: a typo'd filter that silently
 does nothing is worse than an error.
 
 | Field | Type | Required | Validation | Maps to |
@@ -85,7 +85,7 @@ does nothing is worse than an error.
 | `query` | string | **yes** | 3–1000 chars after trim | The question; planned, never pattern-matched into filters |
 | `drug_name` | string | no | ≤200 chars | `query.intr` |
 | `condition` | string | no | ≤200 chars | `query.cond` |
-| `sponsor` | string | no | ≤200 chars | `query.lead` (lead sponsor only — see §5) |
+| `sponsor` | string | no | ≤200 chars | `query.lead` (lead sponsor only: see §5) |
 | `country` | string | no | ≤100 chars | `AREA[LocationCountry]` |
 | `phase` | string[] | no | each ∈ live `Phase` enum | `AREA[Phase]` |
 | `status` | string[] | no | each ∈ live `Status` enum | `AREA[OverallStatus]` |
@@ -127,15 +127,15 @@ infers, and a model that contradicts them is overruled and the override recorded
 
 **Encoding channel** = `{field, type, label, sort?, format?, scale?, unit?, bin_start?, bin_end?}`
 where `type` ∈ `nominal | ordinal | quantitative | temporal | geo`. `field` always names a key
-present in **every** `data` row — a response model validator enforces it, so a renderer needs
+present in **every** `data` row: a response model validator enforces it, so a renderer needs
 nothing beyond `encoding` + `data`.
 
 Two row conventions a renderer should know, because guessing them is exactly what §3 exists to
 prevent:
 
-- **`<field>_label`** — every categorical row carries a human label beside its key, so
+- **`<field>_label`**: every categorical row carries a human label beside its key, so
   `{"phase": "PHASE2", "phase_label": "Phase 2"}`. Plot the key, print the label.
-- **`series` / `stack`** — the breakdown channel on grouped and stacked charts names a row key
+- **`series` / `stack`**: the breakdown channel on grouped and stacked charts names a row key
   of the same name, and `<channel>_key` holds the raw value where the label differs.
 
 | Chart type | Channels |
@@ -155,13 +155,13 @@ prevent:
 
 | Field | Meaning |
 |---|---|
-| `interpretation` | What was computed, in words — never a result |
+| `interpretation` | What was computed, in words: never a result |
 | `planner` | `llm` \| `llm_repaired` \| `heuristic_fallback` |
 | `filters_applied` | The filters that actually ran |
 | `assumptions` | Choices a reader would otherwise have to guess at (§5) |
 | `warnings` | Every degradation, rollup, sample, and downgrade, with numbers |
 | `total_matching_studies` | Exact count for the base filter |
-| `coverage` | Below — present on every response |
+| `coverage` | Below: present on every response |
 | `provenance` | `source`, `api_version`, `data_timestamp`, `retrieved_at` |
 | `timing_ms` | `plan`, `retrieve`, `total` |
 | `api_query_log`, `plan` | Only when `options.explain` |
@@ -194,10 +194,10 @@ prevent:
 ## 4. Example runs
 
 Real output from live runs on 2026-08-16, trimmed for length. All of them run with
-`LLM_ENABLED=false` — the deterministic planner reaches every one — except the scatter, whose
+`LLM_ENABLED=false`, the deterministic planner reaches every one, except the scatter, whose
 intent only the model emits.
 
-### 4.1 Distribution — and numbers that legitimately do not add up
+### 4.1 Distribution, and numbers that legitimately do not add up
 
 ```bash
 curl -s localhost:8000/analyze -H 'content-type: application/json' \
@@ -241,7 +241,7 @@ curl -s localhost:8000/analyze -H 'content-type: application/json' \
 }
 ```
 
-Buckets sum to **3,273** against a total of **2,927**. Not an error — and the response says so
+Buckets sum to **3,273** against a total of **2,927**. That is not an error, and the response says so
 in numbers rather than leaving you to notice. Note also what is **absent**: no `share_of_total`,
 no percentage. A share implies a whole, and overlapping buckets have none; the response model
 rejects those keys outright when `groupby_semantics` is `overlapping`.
@@ -268,7 +268,7 @@ curl -s localhost:8000/analyze -H 'content-type: application/json' \
   ] }
 ```
 
-### 4.3 A partition — where the buckets *do* reconcile
+### 4.3 A partition: where the buckets *do* reconcile
 
 ```bash
 curl -s localhost:8000/analyze -H 'content-type: application/json' \
@@ -290,10 +290,10 @@ curl -s localhost:8000/analyze -H 'content-type: application/json' \
 ```
 
 `overall_status` is single-valued, so `groupby_semantics` is `partition` here and the buckets
-reconcile against the total. The same question shape gives a different coverage story than 4.1 —
+reconcile against the total. The same question shape gives a different coverage story than 4.1,
 that difference is the registry's `partition` flag, not a special case.
 
-### 4.4 Geography — sampled, then confirmed exactly
+### 4.4 Geography: sampled, then confirmed exactly
 
 ```bash
 curl -s localhost:8000/analyze -H 'content-type: application/json' \
@@ -321,7 +321,7 @@ every count then **confirmed** exactly against the corpus. Here the sample happe
 > Labels were discovered from all 2,251 matching studies, so the label set is complete. Each
 > displayed count is exact and confirmed against the full corpus.
 
-### 4.5 Network graph — co-occurrence, with checkable citations
+### 4.5 Network graph: co-occurrence, with checkable citations
 
 ```bash
 curl -s localhost:8000/analyze -H 'content-type: application/json' \
@@ -355,7 +355,7 @@ from every matching study and is therefore exact and unbiased. Above the thresho
 downgrades to a grouped bar chart and says why. A network built from a relevance-ranked sample
 would look authoritative and would not be, so it is not offered at all.
 
-### 4.6 Histogram — enrollment distribution
+### 4.6 Histogram: enrollment distribution
 
 Plan: `intent=histogram`, `group_by=enrollment_count`, glioblastoma trials starting 2024–2025.
 
@@ -376,7 +376,7 @@ Plan: `intent=histogram`, `group_by=enrollment_count`, glioblastoma trials start
   ] }
 ```
 
-### 4.7 Scatter — one point per study
+### 4.7 Scatter: one point per study
 
 Plan: `intent=scatter`, same filter. Record mode only, so every point is a real study you can open.
 
@@ -417,7 +417,7 @@ One `countTotal` request decides how the whole analysis runs:
 | > 2,000, open vocabulary | `sampled_then_confirmed` | Sample → top-K labels → confirm each with `COVERAGE[FullMatch]`. Counts exact; label set may be incomplete, and says so |
 
 **The 2,000 threshold is a property of upstream paging, not a tuning knob.** `pageToken` chains
-are strictly serial — a token is only valid for the exact parameter set that produced it, so
+are strictly serial: a token is only valid for the exact parameter set that produced it, so
 pages cannot be fetched in parallel. 2,000 studies is two round trips and about a second; 50,000
 is fifty round trips and 25–50 seconds, which does not fit on a request path.
 
@@ -433,7 +433,7 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
   `AREA[Phase]NA` returns 234,433. Every predicate goes through one Essie builder, and a test
   fails the build if the string `aggFilters` appears anywhere in `app/`.
 - **`sponsor` means lead sponsor** (`query.lead`), not lead + collaborators (`query.spons`).
-  These differ materially — `Pfizer` returns 3,862 versus 6,064. The choice is disclosed in
+  These differ materially: `Pfizer` returns 3,862 versus 6,064. The choice is disclosed in
   `meta.assumptions` on every response that uses it.
 - **Partial aggregations are never rendered.** If one bucket query in a fan-out fails, the whole
   group-by fails. A chart with a silently missing bar is worse than an error. Citations invert
@@ -441,7 +441,7 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
   continues.
 - **Coherence is refused at the plan, not patched at the renderer.** A comparison of an
   enrollment metric, a plan carrying both `series` and `secondary_group_by`, a one-element
-  `series` — each is rejected with a reason rather than partly honoured. Every one of those was
+  `series`: each is rejected with a reason rather than partly honoured. Every one of those was
   a real defect found by review: they produced, respectively, study counts labelled
   "participants", a silently dropped breakdown, and filters that were never applied.
 - **Refuse rather than approximate.** A cross-tab that does not fit the request budget returns
@@ -454,7 +454,7 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
 
 The demo at `/` is the shortest way to see all of this: it renders every chart type from
 `encoding` + `data` alone, in vanilla JS with inline SVG and no dependencies. That is deliberate
-— a test asserts its renderer map covers every `ChartType` and that no renderer branches on a
+a test asserts its renderer map covers every `ChartType` and that no renderer branches on a
 drug name, a condition, or a dimension key, so anything it cannot draw is a gap in the
 specification rather than in the page.
 
@@ -471,8 +471,8 @@ dimension, no share-of-total field under overlapping semantics, and no network g
 
 `histogram` and `scatter_plot` are reachable through the `enrollment_count` dimension. The
 histogram bins enrollment with fixed, trial-shaped edges (0-10 … 5,001+) rather than equal
-widths — enrollment spans 0 to 188,814,085, so linear bins would put nearly every study in the
-first one — and bars are ordered by their lower edge, never by height. The scatter plots one
+widths: enrollment spans 0 to 188,814,085, so linear bins would put nearly every study in the
+first one. Bars are ordered by their lower edge, never by height. The scatter plots one
 point per study, enrollment against start date, and therefore needs `complete_records` mode
 exactly as `network_graph` does; above the threshold it downgrades to the histogram of the same
 dimension and says so. Studies missing either axis are excluded and counted in an annotation
@@ -483,7 +483,7 @@ rather than plotted at zero, which would manufacture a cluster that does not exi
 ## 7. The interesting problems
 
 The theme, and the thing worth taking away: **identical syntax, different scope, plausible wrong
-number.** This API punishes that pattern repeatedly, and none of the three below errors — each
+number.** This API punishes that pattern repeatedly, and none of the three below errors: each
 returns HTTP 200 with a number that looks fine.
 
 1. **A missing `AREA[]` prefix.** `COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` is valid Essie
@@ -503,17 +503,17 @@ Three more that shaped the implementation:
 4. **`aggFilters=phase:na` returns 0, silently.** A silent zero is the worst possible failure for
    an aggregation engine.
 5. **Country names are upstream's, not ISO's.** A live geography query returned a table instead
-   of a map because one name in twenty had no code — "South Korea", which ISO spells "Korea,
+   of a map because one name in twenty had no code: "South Korea", which ISO spells "Korea,
    Republic of". The map is now generated from the corpus's own 226 distinct values, keys
    included: a curly apostrophe in "Côte d'Ivoire", and a genuine trailing space in "Bonaire,
    Saint Eustatius and Saba " that would break the lookup if tidied away.
 6. **`NA` is not missing.** 234,433 studies carry an explicit `"NA"` phase; 141,903 have no
    `phases` field at all. Two distinct buckets, never merged.
-7. **The 16% nobody counts.** 95,740 studies have status `UNKNOWN` — they stopped updating.
+7. **The 16% nobody counts.** 95,740 studies have status `UNKNOWN`: they stopped updating.
    `LastKnownStatus` is populated for exactly that cohort and nobody else (`MISSING` = 502,950
    of 598,690; `UNKNOWN AND NOT MISSING` = 95,740, so the overlap is total). Their last
    self-reported state was `RECRUITING` 54,030, `NOT_YET_RECRUITING` 23,607,
-   `ACTIVE_NOT_RECRUITING` 14,458 — and `COMPLETED` **zero**, since a completed trial has no
+   `ACTIVE_NOT_RECRUITING` 14,458, and `COMPLETED` zero, since a completed trial has no
    reason to lapse. The trials that go dark are overwhelmingly the ones still running.
 
 ---
@@ -521,19 +521,19 @@ Three more that shaped the implementation:
 ## 8. Tools, validation, and what was deliberate
 
 **Tools.** Claude (Claude Code) throughout, and Cursor for parts of the implementation. The
-working method was to write the contract first — `SPEC.md` and `docs/CTG-API-NOTES.md` — then a
+working method was to write the contract first, `SPEC.md` and `docs/CTG-API-NOTES.md`, then a
 build plan splitting it into twelve reviewable tasks, one per subsystem, each with its own
 acceptance criteria. Those task specs are in [`docs/tasks/`](docs/tasks/) and
 [`docs/BUILD-PLAN.md`](docs/BUILD-PLAN.md); they are what the implementation was written
 against, and reading one alongside its commit shows what was specified versus what the code
 had to discover. The commit log is the build narrative, and each message records the reasoning
-for that step — including the two commits that say a shipped chart was a fabrication and why.
+for that step: including the two commits that say a shipped chart was a fabrication and why.
 
 **How correctness was validated.**
 
 - **Everything upstream was measured, not assumed.** `docs/CTG-API-NOTES.md` records live `curl`
   results with counts; anything unverified is marked `[unverified]`. When the notes and the code
-  disagreed, the notes were re-measured first and corrected — which is how the missing `AREA[]`
+  disagreed, the notes were re-measured first and corrected, which is how the missing `AREA[]`
   prefix and the `query.cond`/`filter.advanced` mix-up in §7 were found.
 - **Acceptance tests pin the arithmetic**, not just the shape: A1 asserts the exact reconciliation
   (2,927 / 169 / 3,273 / overlap 515), A2 asserts 1,841 rather than 2,733.
@@ -552,33 +552,33 @@ for that step — including the two commits that say a shipped chart was a fabri
   suite remains the regression net, because it can drive failure modes a live key cannot.
 - **94% line coverage**, though the number is the weakest signal here: several of the defects
   below were found in fully covered code, by running it rather than by testing it.
-- **Seven adversarial review passes found 45 defects** the spec-derived tests could not see —
+- **Seven adversarial review passes found 45 defects** the spec-derived tests could not see:
   nine, twelve, six, five, four, six, then three. The tail is the interesting part: later passes kept finding
   defects *introduced by the previous pass's fixes*, and they clustered. Five consecutive fixes to
   `coverage.py` each introduced the next, because the file tracked one flag for two different
-  events — an aggregation that stopped early, where nothing beyond the cap was ever counted, and
+  events: an aggregation that stopped early, where nothing beyond the cap was ever counted, and
   an axis narrowed for plotting, where everything was counted and some was not drawn. Patching a
   sixth time would have been the wrong move; separating the two ended it. A planner keyword was
   likewise corrected three times before the right answer turned out to be deleting the whole
-  family — the third phrasing could not have worked, since "per &lt;dimension&gt;" is a
+  family: the third phrasing could not have worked, since "per &lt;dimension&gt;" is a
   continuation by construction. Each defect is pinned by a regression test in
   `tests/unit/test_review_fixes.py` and `tests/unit/test_multi.py`, and named in the commit that
   fixed it rather than quietly corrected, because the pattern in them is more useful than the
   fixes. Two shipped fabricated numbers: a comparison chart labelled with one series' name over
   the base filter's counts, and study counts relabelled as participant counts. Others were
-  disclosure failures of the same family the service exists to prevent — a sample coverage that
+  disclosure failures of the same family the service exists to prevent: a sample coverage that
   averaged two ratios over different populations and claimed 45.5% where the truth was 1.9%, and
   a chart that plotted three of ten categories while `meta.coverage` reconciled as complete.
 - **Running it found what reading it did not.** `scripts/showcase.py` caught two bugs on its
-  first run — stacking read the wrong dimension's partition flag, and a capped bucket list was
-  reported as an unexplained reconciliation failure — both in code the tests covered.
+  first run: stacking read the wrong dimension's partition flag, and a capped bucket list was
+  reported as an unexplained reconciliation failure: both in code the tests covered.
 
 **Deliberate design versus generated code.** The architecture is deliberate and was decided
 before implementation: the plan-only LLM boundary, the three-mode preflight and the reason the
 threshold is 2,000, the dimension registry with `partition` as a first-class flag, the
 fail-all-versus-fail-soft split, and the rule that every cap or sample is disclosed with actual
 numbers. The upstream findings in §7 are original measurements. Implementation was largely
-generated against those specs and then reviewed, corrected, and re-tested — the review pass in
+generated against those specs and then reviewed, corrected, and re-tested: the review pass in
 particular changed real behaviour rather than style.
 
 ---
@@ -594,14 +594,14 @@ particular changed real behaviour rather than style.
   less there than in a long-lived process. A shared store is the fix.
 - **The deployed endpoint is public and calls a real model.** Plan calls are small and bounded at
   three per request, and repeat questions hit the plan cache, but there is no auth or rate limit
-  in front of it — acceptable for a review link, not for anything else.
+  in front of it: acceptable for a review link, not for anything else.
 - **Cross-tabs above the record-mode threshold need both dimensions closed**, and refuse
   otherwise. Sampling a secondary dimension would need per-cell confirmation to stay exact.
 - **Condition grouping is literal.** MeSH hierarchy would let "cancer" roll up its subtypes
   instead of matching the string.
 - **`[unverified]` items in the notes**: upstream rate limits (undocumented; the widely repeated
   "50 req/min" could not be confirmed from any official source) and `pageToken` expiry under long
-  crawls. The client self-limits regardless — this is a public NIH service we do not own.
+  crawls. The client self-limits regardless: this is a public NIH service we do not own.
 
 ---
 
@@ -618,12 +618,12 @@ live calls live in `scripts/verify_upstream.py`, which is what the fixtures are 
 
 The demo is tested twice over: once from Python, that its renderer map covers every chart type
 and that no renderer branches on a drug name or dimension key; and once by executing its own
-JavaScript under node — one rect per row, one line per edge, nothing dropped silently. That
+JavaScript under node: one rect per row, one line per edge, nothing dropped silently. That
 second suite skips where node is absent, so the tests stay runnable with only Python installed.
 
 `tests/acceptance/` pins SPEC §8's criteria as executable contract tests against the recorded
-`dataTimestamp` — A1 reconciliation, A2 exact-match discipline, A3 sample disclosure, A4 no
-fabrication, A5 planner determinism, A6 degraded mode, A7 safety rules — plus invariants that
+`dataTimestamp`. A1 reconciliation, A2 exact-match discipline, A3 sample disclosure, A4 no
+fabrication, A5 planner determinism, A6 degraded mode, A7 safety rules: plus invariants that
 sweep every response: no bare `truncated` flag anywhere, `meta.coverage` fully populated, and no
 share field under overlapping semantics.
 
@@ -636,5 +636,5 @@ uv run python scripts/record_fixtures.py    # re-record after an upstream refres
 `showcase.py` exists because "supports ten chart types" is a claim a reviewer should be able to
 check rather than take on trust. It runs ten real queries against the live API and prints what
 came back; six go through the deterministic planner with no key, and the four needing intents
-the keyword matcher does not emit have their plan supplied through the same seam the tests use —
+the keyword matcher does not emit have their plan supplied through the same seam the tests use,
 labelled per row. It has already earned itself twice, catching two bugs no fixture reached.

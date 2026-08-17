@@ -55,7 +55,7 @@ def test_a_large_trend_uses_server_counts_not_sampling() -> None:
     """start_year is closed (a derived range) but carries enum_name=None.
 
     Routing it to the sampling mode confirmed year labels with COVERAGE[FullMatch]"2021" instead
-    of RANGE[2021-01-01,2021-12-31], which confirms to zero and empties the chart — for the most
+    of RANGE[2021-01-01,2021-12-31], which confirms to zero and empties the chart: for the most
     commonly asked question there is.
     """
     assert select_mode(50_000, REGISTRY["start_year"], 2_000) == "server_counts"
@@ -311,7 +311,7 @@ async def test_an_empty_bar_chart_still_collapses_to_a_table(
 async def test_edge_citations_quote_the_record_not_the_id(
     settings: Settings, vocab: Vocabulary
 ) -> None:
-    """Repeating the NCT id as the excerpt cites nothing — it restates `nct_id` (SPEC §4.2)."""
+    """Repeating the NCT id as the excerpt cites nothing: it restates `nct_id` (SPEC §4.2)."""
     ctx = await a_ctx(settings, vocab)
     ctx.options = Options(include_citations=True, citations_per_datum=2)
     studies = [
@@ -389,7 +389,7 @@ async def test_a_histogram_is_ordered_by_bin_not_by_height(
 
 
 def test_a_capped_partition_is_not_reported_as_an_unexplained_difference() -> None:
-    """Showing 3 of 51,610 sponsors is expected not to reconcile — the cap is the explanation.
+    """Showing 3 of 51,610 sponsors is expected not to reconcile: the cap is the explanation.
 
     Warning that the difference is unexplained points at the data when it should point at
     options.max_buckets, and it fired on a live query for exactly that reason.
@@ -403,7 +403,7 @@ def test_a_capped_partition_is_not_reported_as_an_unexplained_difference() -> No
         unclassified=0,
         semantics="partition",
         # server_counts, because the response model rightly refuses a sampled mode with no
-        # sample_size — the cap being tested here is max_buckets, not sampling.
+        # sample_size: the cap being tested here is max_buckets, not sampling.
         mode="server_counts",
         aggregation_capped=True,
     )
@@ -551,7 +551,7 @@ async def test_a_long_retry_after_is_slept_only_within_the_request_budget(
 async def test_a_histogram_never_produces_an_other_bar(
     settings: Settings, vocab: Vocabulary
 ) -> None:
-    """`_bin_edges("OTHER")` returned [0, inf) — a full-width bar overlapping every real one."""
+    """`_bin_edges("OTHER")` returned [0, inf): a full-width bar overlapping every real one."""
     ctx = await a_ctx(settings, vocab)
     ctx.options = Options(include_citations=False, max_buckets=3)
     buckets = [
@@ -590,7 +590,7 @@ def test_the_how_many_people_keyword_family_stays_banned() -> None:
 
     "how many participants" stole "…in each phase"; "how many patients" stole it again; and the
     narrower "how many patients are in" / "how many patients per" stole "How many patients are
-    in each phase?" and "How many patients per phase?" — the latter unfixable in principle,
+    in each phase?" and "How many patients per phase?": the latter unfixable in principle,
     since "per <dimension>" is a continuation by construction.
 
     Counting people is an enrollment_sum question this planner cannot express. It answers the
@@ -673,7 +673,7 @@ def test_narrowing_keeps_the_overlap_exact_and_capping_does_not() -> None:
     """The two cuts are not the same cut, and treating them alike caused four bugs here.
 
     Narrowing drops categories that *were counted*, so their memberships are known and the
-    overlap stays exact — degrading it to a disclaimer would be a regression from disclosure.
+    overlap stays exact: degrading it to a disclaimer would be a regression from disclosure.
     Capping means values were never counted, so the memberships that would complete the sum do
     not exist and no overlap can be quoted. Neither may print a negative number.
     """
@@ -756,7 +756,7 @@ def test_a_sampled_undercount_is_not_blamed_on_upstream() -> None:
     """A sample can simply never meet some corpus labels.
 
     `with_value` is computed over the whole corpus, so memberships falling short is the expected
-    outcome of sampling — not the per-bucket counts disagreeing with the MISSING probe. Blaming
+    outcome of sampling: not the per-bucket counts disagreeing with the MISSING probe. Blaming
     upstream told a reader to distrust exact confirmed counts because the sampler had not seen
     everything.
     """
@@ -802,7 +802,7 @@ def test_a_viz_hint_cannot_stack_a_multi_valued_secondary() -> None:
     """The override check read the wrong dimension, so it waved through the chart it guards.
 
     Segments are the *secondary* dimension's values. Reading the primary's partition flag let a
-    stacked hint through on status-by-phase — segments summing past their bar, which SPEC §6.1
+    stacked hint through on status-by-phase: segments summing past their bar, which SPEC §6.1
     calls non-overridable.
     """
     from app.render.registry import select_chart
@@ -830,7 +830,7 @@ def test_a_viz_hint_cannot_stack_a_multi_valued_secondary() -> None:
 
 
 def test_a_single_valued_secondary_may_still_be_stacked_by_hint() -> None:
-    """The rule must not become a blanket refusal — phase-by-status genuinely stacks."""
+    """The rule must not become a blanket refusal: phase-by-status genuinely stacks."""
     from app.render.registry import select_chart
 
     bucketset = BucketSet(

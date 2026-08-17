@@ -1,4 +1,4 @@
-# T08 — Citations
+# T08: Citations
 
 **Est. 20 min · depends on: T07 · unblocks: nothing (stated bonus)**
 
@@ -15,20 +15,20 @@ async def sample_citations(
 
 Rules, each of which maps to a numbered rule in SPEC §4.2:
 
-1. **`excerpt` is a verbatim serialization of the upstream response** — an exact substring
+1. **`excerpt` is a verbatim serialization of the upstream response**: an exact substring
    or `json.dumps` of the actual value at `dim.record_path`. Never model-generated, never
    paraphrased, never reformatted. Assert this in a test by checking the excerpt appears in
    the raw fixture bytes (for scalars) or parses back equal (for lists).
-2. **`field` is the structured field that determines bucket membership** — always
+2. **`field` is the structured field that determines bucket membership**: always
    `dim.record_path` (e.g. `protocolSection.designModule.phases`), never a `briefSummary`
    grep. This is the rule that matters most: `query.intr=keytruda` matches via upstream
    synonym expansion, so the literal query string may appear nowhere in the record. Citing
    `interventions[].name` is defensible; citing a summary scan is not. Add a test asserting
    no citation `field` ever contains `briefSummary` or `detailedDescription`.
 3. **Citations are a sample and say so.** `citation_note` reads
-   `"3 of 1,750 contributing studies"` — exact wording from SPEC §4.2, with separators.
+   `"3 of 1,750 contributing studies"`: exact wording from SPEC §4.2, with separators.
    When the bucket has ≤ n studies, the note reads `"all 4 contributing studies"`.
-4. `url` is `https://clinicaltrials.gov/study/{nct_id}` — construct it, don't take it from
+4. `url` is `https://clinicaltrials.gov/study/{nct_id}`: construct it, don't take it from
    upstream.
 
 Fetching:
@@ -37,9 +37,9 @@ Fetching:
   `fields=NCTId|{dim.record_path}` (~550 B per study per notes §3), issued concurrently
   with the count fan-out wave, not after it.
 - Skip entirely when `options.include_citations is False` or `citations_per_datum == 0`
-  — and then don't spend the upstream budget either.
+ , and then don't spend the upstream budget either.
 - **Scope this task to the `server_counts` path only.** The free-citations case belongs to
-  `complete_records`, which doesn't exist until T10 — building it now means stubbing the
+  `complete_records`, which doesn't exist until T10: building it now means stubbing the
   mode, and T10 already carries the obligation ("citations are free: sample from the
   in-memory records, zero extra requests", with the request-count test). Design
   `sample_citations` so the record-mode caller can pass already-fetched records instead of
@@ -47,7 +47,7 @@ Fetching:
 - Citation failure is **not** fatal (unlike a count failure): drop the citations for that
   bucket, add a warning naming the bucket. Evidence is nice-to-have; numbers are not.
 - Citation requests count against `ctx.upstream_budget` and are the **first thing cut**
-  when the budget or deadline is tight — degrade to fewer citations, record a warning, keep
+  when the budget or deadline is tight: degrade to fewer citations, record a warning, keep
   the numbers.
 
 ## Sampling determinism

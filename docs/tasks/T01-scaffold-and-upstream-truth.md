@@ -1,8 +1,8 @@
-# T01 — Scaffold, config, errors, and one upstream truth to settle
+# T01: Scaffold, config, errors, and one upstream truth to settle
 
 **Est. 20 min · depends on: nothing · unblocks: everything**
 
-## Part A — settle the operator name (do this first, before any code)
+## Part A: settle the operator name (do this first, before any code)
 
 `docs/CTG-API-NOTES.md` §2 says `COVER[FullMatch]`. `SPEC.md` §5.3 and §8-A2 say
 `COVERAGE[FullMatch]`. They cannot both be right and this operator is load-bearing for
@@ -36,15 +36,15 @@ Then:
 If both spellings work identically, say so in the notes and pick `COVERAGE` (matches the
 official caveat wording in §2). Do not leave the ambiguity in the repo.
 
-## Part B — scaffold
+## Part B: scaffold
 
 Create:
 
-- `pyproject.toml` — deps per BUILD-PLAN §1; ruff (line length 100) + mypy (`strict` for
+- `pyproject.toml`: deps per BUILD-PLAN §1; ruff (line length 100) + mypy (`strict` for
   `app.*`) + pytest (`asyncio_mode = "auto"`) config.
-- `.env.example` — every var in BUILD-PLAN §1 with safe defaults and `OPENAI_API_KEY=`
+- `.env.example`: every var in BUILD-PLAN §1 with safe defaults and `OPENAI_API_KEY=`
   left blank. Commit this one (`.gitignore` already un-ignores it).
-- `app/config.py` — `Settings(BaseSettings)`, `env_file=".env"`, module-level
+- `app/config.py`: `Settings(BaseSettings)`, `env_file=".env"`, module-level
   `get_settings()` memoised with `functools.lru_cache`.
 - `app/errors.py`:
   ```python
@@ -67,9 +67,9 @@ Create:
   (`{"error": {code, message, request_id, retry_after_seconds?, details?}}`).
   `request_id` is a per-request uuid4 hex set on `request.state` by middleware and echoed
   in an `X-Request-Id` response header.
-- `app/main.py` — `create_app()` factory, handlers registered, `GET /health` returning
+- `app/main.py`: `create_app()` factory, handlers registered, `GET /health` returning
   `{"status": "ok", "llm_enabled": bool}`. No `/analyze` yet.
-- `tests/unit/test_errors.py` — each `CheironError` maps to its documented status and the
+- `tests/unit/test_errors.py`: each `CheironError` maps to its documented status and the
   envelope shape matches SPEC §4.5. Assert a Pydantic `ValidationError` on the request
   model surfaces as `422 invalid_request` with a non-empty `details[]` (stub the model if
   T04 hasn't landed).

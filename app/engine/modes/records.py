@@ -1,11 +1,11 @@
 """`complete_records`: page every matching study and aggregate in-process. SPEC §5.2.
 
-This is where the system is at its best — exact, unbiased, every dimension available, citations
+This is where the system is at its best: exact, unbiased, every dimension available, citations
 free from the in-memory page. Pages are strictly serial (notes §1): a `pageToken` is bound to
 the exact parameter set that produced it, so there is no parallel fetch and no offset arithmetic.
 
 **Why 2,000.** `pageSize` is silently clamped at 1,000, so 2k studies is two round trips (~1 s).
-50k would be ~50 serial round trips and 25-50 s — not a request-path number. That is why the
+50k would be ~50 serial round trips and 25-50 s: not a request-path number. That is why the
 threshold is a property of upstream paging, not a tuning knob.
 """
 
@@ -38,7 +38,7 @@ def fields_projection() -> str:
     """One projection covering every dimension's membership field plus enrollment and NCTId.
 
     A projected study is ~550 B against 17.3 KB full (notes §3), so one pass serves any
-    group-by — a secondary group-by costs nothing extra.
+    group-by: a secondary group-by costs nothing extra.
     """
     paths: list[str] = ["NCTId", ENROLLMENT_PATH]
     for dim in REGISTRY.values():
@@ -210,7 +210,7 @@ def membership_keys(study: Mapping[str, Any], dim: Dimension) -> list[str] | Non
         return [str(year)] if year is not None else None
 
     if dim.key in QUANTITATIVE_KEYS:
-        # A non-numeric or absent value is unclassified, never bin zero — notes §6.4 found
+        # A non-numeric or absent value is unclassified, never bin zero: notes §6.4 found
         # enrollment missing on 7,133 studies, and folding those into "0-10" would invent a
         # spike of tiny trials that do not exist.
         if isinstance(raw, bool) or not isinstance(raw, (int, float)):

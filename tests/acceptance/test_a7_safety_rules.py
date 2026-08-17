@@ -1,7 +1,7 @@
-"""A7 — safety rules. SPEC §8.
+"""A7: safety rules. SPEC §8.
 
 Both rules are non-overridable, and both are driven here through the **LLM path** with a scripted
-completer, because the heuristic planner cannot express either case — it never emits
+completer, because the heuristic planner cannot express either case: it never emits
 `intent=network` and never sets `viz_hint`. That makes this also the end-to-end proof that a
 model-authored plan flows through the engine and out as a chart.
 """

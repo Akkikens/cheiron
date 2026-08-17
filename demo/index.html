@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Cheiron — auditable charts from clinical trial data</title>
+<title>Cheiron: auditable charts from clinical trial data</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/png" sizes="32x32" href="/assets/mark-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/assets/mark-180.png">
@@ -9,7 +9,7 @@
 <style>
   /* Three type roles, each tied to a real distinction in the product:
      mono = computed by the engine, serif = explained in prose, sans = interface.
-     All system stacks — the page ships with no fonts, no scripts, no build. */
+     All system stacks: the page ships with no fonts, no scripts, no build. */
   :root {
     --paper:   #faf9f6;
     --card:    #ffffff;
@@ -46,11 +46,12 @@
     padding: 22px 32px 16px; border-bottom: 1px solid var(--rule);
   }
   .wordmark {
-    display: flex; align-items: center; gap: 9px;
-    font: 600 19px/1 var(--mono); letter-spacing: -0.02em; margin: 0;
+    display: flex; align-items: center; gap: 10px;
+    font: 600 20px/1 var(--mono); letter-spacing: -0.02em; margin: 0;
   }
-  .wordmark img { width: 26px; height: 26px; display: block; }
-  .wordmark .dot { color: var(--ramp-hi); }
+  .wordmark img { width: 30px; height: 30px; display: block; }
+  .wordmark .name { display: inline; }
+  .wordmark .dot { color: var(--ramp-hi); margin-left: 1px; }
   .tagline { font: italic 15px/1 var(--serif); color: var(--muted); }
   .masthead .live {
     margin-left: auto; font: 500 11px/1 var(--mono); letter-spacing: .1em;
@@ -64,6 +65,7 @@
   .rail { border-right: 1px solid var(--rule); padding: 24px 24px 40px; }
   @media (max-width: 880px) { .rail { border-right: 0; border-bottom: 1px solid var(--rule); } }
   .sheet { padding: 28px 32px 64px; min-width: 0; }
+  .sheet > * { max-width: 1080px; }
 
   /* --- form: a requisition slip, not a settings panel ---------------------- */
   .eyebrow {
@@ -195,7 +197,7 @@
 </style>
 
 <header class="masthead">
-  <h1 class="wordmark"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26">cheiron<span class="dot">.</span></h1>
+  <h1 class="wordmark"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26"><span class="name">cheiron<span class="dot">.</span></span></h1>
   <p class="tagline">Ask about clinical trials. Every number cites its source.</p>
   <span class="live">ClinicalTrials.gov · live</span>
 </header>
@@ -299,7 +301,7 @@ function svgEl(w, h, body, extra = '') {
 // --- generic renderers, driven entirely by `encoding` + `data` -----------------------------
 
 // An ordinal axis carries order, so it earns a sequential ramp; a nominal one does not, and
-// gets distinct hues instead. The spec says which — nothing here knows what was asked.
+// gets distinct hues instead. The spec says which: nothing here knows what was asked.
 function scaleFor(enc, categories) {
   const ordinal = enc.x && enc.x.type === 'ordinal';
   return (key, i) => {
@@ -525,7 +527,7 @@ function choropleth(viz) {
 
 function table(viz) {
   const rows = viz.data;
-  if (!rows.length) return `<p class="axis-note">No rows — nothing matched these filters.</p>`;
+  if (!rows.length) return `<p class="axis-note">No rows: nothing matched these filters.</p>`;
   const cols = Object.keys(rows[0]).filter((k) => k !== 'citations' && k !== 'citation_note');
   return `<table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
     rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(fmt(r[c]))}</td>`).join('')}</tr>`).join('')
@@ -563,7 +565,7 @@ const RENDERERS = {
 
 // The signature. Two proportional rows on one scale: what matched, and what got counted. When a
 // dimension is multi-valued the second row visibly overruns the first, and that excess *is* the
-// overlap — the disagreement most tools hide behind a percentage.
+// overlap: the disagreement most tools hide behind a percentage.
 function reconciliation(meta) {
   const c = meta.coverage || {};
   const total = meta.total_matching_studies || 0;
@@ -708,6 +710,11 @@ async function run() {
 }
 
 $('go').addEventListener('click', run);
+
+// The page opens on a real answer rather than on a paragraph describing one: a first-time
+// visitor should see the reconciliation before deciding whether to read anything. Guarded so
+// the renderer test harness, which loads this script outside a browser, does not fetch.
+if (typeof window !== 'undefined' && typeof fetch === 'function') run();
 document.querySelectorAll('.examples button').forEach((b) => b.addEventListener('click', () => {
   $('q').value = b.dataset.q;
   $('drug').value = b.dataset.drug ?? '';

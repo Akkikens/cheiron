@@ -1,4 +1,4 @@
-# T02 — `CTGClient`: transport, courtesy, and the vocabulary loader
+# T02: `CTGClient`: transport, courtesy, and the vocabulary loader
 
 **Est. 25 min · depends on: T01 · unblocks: T03, T06**
 
@@ -40,18 +40,18 @@ Behaviour, all of it non-negotiable:
    clamps silently (notes §3) and we must never depend on that.
 4. **`pageToken` binding.** `page()` computes `sha256` of the sorted non-paging params and
    stores it alongside each issued token. Passing a token minted by a *different* param set
-   raises `ValueError` — notes §3 warns this silently returns wrong data upstream.
+   raises `ValueError`: notes §3 warns this silently returns wrong data upstream.
 5. **Courtesy:** `asyncio.Semaphore(MAX_CONCURRENCY)`; token bucket (default 8 req/s,
    burst 16); circuit breaker (5 consecutive failures → open 30 s → half-open single
    probe) raising `upstream_circuit_open` (503) with `retry_after_seconds`; retry on
    timeout/5xx/`429` only, 3 attempts, exponential backoff with full jitter. **Never retry
-   a 4xx** — a bad predicate is deterministic.
+   a 4xx**: a bad predicate is deterministic.
 6. **Transport:** one shared `httpx.AsyncClient(http2=True)`, `Accept-Encoding: gzip`,
    descriptive `User-Agent: cheiron/0.1 (+contact)`, connect 3 s / read 8 s timeouts.
 7. **ETag revalidation** on `version()` and `enums()`: store the tag, send
    `If-None-Match`, serve cached body on `304`.
 8. **`query_log`** records every fully-formed upstream URL in issue order. Feeds
-   `meta.api_query_log` when `options.explain` (SPEC §4.3). One log per client instance —
+   `meta.api_query_log` when `options.explain` (SPEC §4.3). One log per client instance
    construct a client (or a logging scope) per request.
 
 ## `app/ctg/vocab.py`
@@ -70,7 +70,7 @@ class Vocabulary:
   hardcoded** (SPEC §3, notes §7). The lists in notes §7 are reference only.
 - Human labels: derived by a deterministic rule (`PHASE2`→`Phase 2`,
   `ACTIVE_NOT_RECRUITING`→`Active, not recruiting`) plus a small explicit override map for
-  the ones the rule gets wrong — at minimum `NA`→`Not Applicable`, `NIH`→`NIH`. Labels are
+  the ones the rule gets wrong: at minimum `NA`→`Not Applicable`, `NIH`→`NIH`. Labels are
   code, never model output (SPEC §4.1).
 - `sort_order` returns the natural clinical order for `Phase`
   (`EARLY_PHASE1 < PHASE1 < … < PHASE4 < NA < MISSING`, matching SPEC §4's `sort` array),

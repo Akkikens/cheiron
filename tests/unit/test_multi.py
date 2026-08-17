@@ -2,7 +2,7 @@
 
 The regression these guard against was live: a two-series comparison returned a
 `grouped_bar_chart` whose every row carried the *first* series' label and the *base filter's*
-counts — a chart asserting a comparison nobody computed. Each test below fails if that returns.
+counts: a chart asserting a comparison nobody computed. Each test below fails if that returns.
 """
 
 from __future__ import annotations
@@ -570,7 +570,7 @@ async def test_a_truncated_overlapping_dimension_also_discloses_the_cut(
     """`complete` was read only in the partition branch.
 
     So a truncated comparison on phase, condition or country disclosed the cut nowhere in
-    meta.coverage — the branch that fires for every multi-valued dimension ignored it.
+    meta.coverage: the branch that fires for every multi-valued dimension ignored it.
     """
     from app.engine.coverage import build_coverage
     from app.render.encode import plotted_axis_keys
@@ -590,7 +590,7 @@ async def test_an_absent_breakdown_does_not_leave_a_breakdown_chart(settings: Se
     """Clearing `cells` was not enough: `select_chart` reads the plan, not the cells.
 
     So an empty cross-tab still chose grouped/stacked and `render` stamped a constant "all"
-    series on every row — a chart advertising a breakdown the data does not contain.
+    series on every row: a chart advertising a breakdown the data does not contain.
     """
     import json
 
@@ -599,7 +599,7 @@ async def test_an_absent_breakdown_does_not_leave_a_breakdown_chart(settings: Se
     from app.models.plan import ChartType
     from app.models.request import AnalyzeRequest
 
-    # Small enough for record mode, where the cross-tab is computed in process — the studies
+    # Small enough for record mode, where the cross-tab is computed in process: the studies
     # carry a phase but no status, so no (phase, status) pair exists to plot.
     upstream = Upstream(
         {None: 3, "AREA[Phase]MISSING": 0},

@@ -7,7 +7,7 @@ answer.** T03 measured the same expression under both: `(head OR neck) AND pain 
 
 So the two halves stay separate:
 
-- **free-text filters go to `query.*`** per SPEC §2.1 — `intervention` → `query.intr`,
+- **free-text filters go to `query.*`** per SPEC §2.1: `intervention` → `query.intr`,
   `condition` → `query.cond`, `sponsor` → `query.lead`, `term` → `query.term`;
 - **structured constraints and bucket predicates go to `filter.advanced`** via the builder.
 
@@ -26,7 +26,7 @@ from app.models.plan import StudyFilter
 
 SPONSOR_ASSUMPTION = (
     "sponsor was matched against the lead sponsor only (query.lead), not lead plus "
-    "collaborators (query.spons); the two differ materially — Pfizer returns 3,862 against "
+    "collaborators (query.spons); the two differ materially, and Pfizer returns 3,862 against "
     "6,064."
 )
 """SPEC §2.1 settles the mapping and requires it to be disclosed on every response using it."""

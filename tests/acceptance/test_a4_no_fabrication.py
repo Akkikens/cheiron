@@ -1,7 +1,7 @@
-"""A4 — no fabrication. SPEC §8.
+"""A4: no fabrication. SPEC §8.
 
 A query matching zero studies returns an empty `data` array, `total_matching_studies: 0`, and a
-warning. Never an invented row, and never an error — SPEC §4.4 requires a valid spec even when
+warning. Never an invented row, and never an error. SPEC §4.4 requires a valid spec even when
 the honest answer is "nothing".
 """
 

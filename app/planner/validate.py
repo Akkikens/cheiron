@@ -174,7 +174,7 @@ def _check_coherence(plan: AnalysisPlan) -> list[str]:
 
     # `scatter` deliberately does NOT require secondary_group_by. It plots one point per study
     # with enrollment against start date, so the second axis is a property of the chart rather
-    # than a choice the plan makes — demanding a field the renderer ignores would invite a
+    # than a choice the plan makes: demanding a field the renderer ignores would invite a
     # caller to set it and expect it to matter.
 
     errors.extend(_check_intent_is_reachable(plan))
@@ -186,11 +186,11 @@ def _check_intent_is_reachable(plan: AnalysisPlan) -> list[str]:
 
     Rejecting is mandatory rather than tidy. Both intents are in the plan schema, so from T09
     the model can emit them, and the schema is the model's action space: every intent in it
-    needs a defined outcome — served, or refused with a reason. Falling through to the `table`
+    needs a defined outcome: served, or refused with a reason. Falling through to the `table`
     branch would silently answer a different question.
 
     Keyed on `QUANTITATIVE_KEYS` rather than hardcoded, so adding `enrollment_count` lifts this
-    in one place — and breaks T07's "never returned" sweep, which is how whoever adds it learns
+    in one place, and breaks T07's "never returned" sweep, which is how whoever adds it learns
     those two branches now need real coverage.
     """
     if QUANTITATIVE_KEYS:
@@ -268,7 +268,7 @@ def validate_plan(plan: AnalysisPlan, vocab: Vocabulary) -> list[str]:
 
     Returns messages rather than raising: T09 feeds them back for at most two repair attempts,
     then falls back to the heuristic planner (SPEC §3). A plan still invalid after all of that
-    is the caller's answer, and it surfaces as `unplannable_query` — not `invalid_request`,
+    is the caller's answer, and it surfaces as `unplannable_query`: not `invalid_request`,
     since the request was well-formed and the question is what could not be served.
 
     Enrollment metrics are plan-valid (T10): above the record-mode threshold the engine refuses
@@ -307,7 +307,7 @@ def enforce_hard_constraints(
     LLM that ignores `drug_name` cannot change which studies are counted.
 
     `series[].filters` are left alone. A series overlay exists precisely to vary one field
-    across series — a two-sponsor comparison would be flattened into one series if the
+    across series: a two-sponsor comparison would be flattened into one series if the
     request's `sponsor` were stamped onto both.
 
     Returns the plan and the overrides it made, for `meta.assumptions`.

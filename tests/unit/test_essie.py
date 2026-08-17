@@ -105,7 +105,7 @@ def test_full_match_has_no_unscoped_api() -> None:
 
 
 def test_quote_injection_is_neutralised() -> None:
-    """Unescaped, notes §2 records this returning 49,659 — the injected clause executes."""
+    """Unescaped, notes §2 records this returning 49,659: the injected clause executes."""
     hostile = 'Merck" OR AREA[Phase]PHASE3'
     built = Essie.full_match("LeadSponsorName", hostile)
 

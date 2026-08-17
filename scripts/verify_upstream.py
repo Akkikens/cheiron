@@ -4,7 +4,7 @@
     python scripts/verify_upstream.py --predicates   # the whole notes §2 table, builder-built
     python scripts/verify_upstream.py --a1           # SPEC A1 through the real engine, live
 
-`--predicates` sends **only** `Essie` output — no hand-written query strings — so a drift
+`--predicates` sends **only** `Essie` output, no hand-written query strings, so a drift
 between the builder and `docs/CTG-API-NOTES.md` shows up here rather than in a chart.
 
 `--a1` runs `preflight` and the `server_counts` fan-out against live upstream and checks the

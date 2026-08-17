@@ -1,6 +1,6 @@
 """Turn a `BucketSet` into a `Visualization`. SPEC §6.2, §4.1.
 
-Titles are format strings over the plan — never model prose. The Other rollup is the one place
+Titles are format strings over the plan: never model prose. The Other rollup is the one place
 this module can silently drop data, so the annotation names both the rolled-in category count
 and the summed value; a bare omission would be `truncated: true` wearing a different hat.
 """
@@ -66,7 +66,7 @@ def render(
 
     if chart_type is ChartType.HISTOGRAM:
         # No Other rollup on a histogram. Bins are contiguous and there are only seven, so a
-        # rollup produces an "OTHER" bar with no edges of its own — `_bin_edges` would hand it
+        # rollup produces an "OTHER" bar with no edges of its own: `_bin_edges` would hand it
         # [0, ∞), a full-width bar overlapping every real one.
         buckets, rollup_annotation = list(bucketset.buckets), None
     else:
@@ -79,7 +79,7 @@ def render(
             row["bin_start"] = low
             row["bin_end"] = high
     if chart_type in (ChartType.GROUPED_BAR_CHART, ChartType.STACKED_BAR_CHART):
-        # Reached only when there is genuinely one series and no secondary dimension — the
+        # Reached only when there is genuinely one series and no secondary dimension: the
         # network A7 downgrade is the main case. Real comparisons and cross-tabs never arrive
         # here; they go through `render_panels` / `render_crosstab`, which carry real breakdowns.
         # A constant is honest for a single series and dishonest for several, which is why the
@@ -133,7 +133,7 @@ def render_panels(
     """A real comparison: one row per (series, bucket), each count from that series' own fan-out.
 
     Every row carries the label of the series it was actually counted under. The previous
-    behaviour — one series' label stamped on the base filter's counts — is the failure this
+    behaviour, one series' label stamped on the base filter's counts, is the failure this
     function exists to make impossible.
     """
     warnings: list[str] = []
@@ -207,7 +207,7 @@ def render_crosstab(
 ) -> tuple[Visualization, list[str]]:
     """A real cross-tab: one row per (primary, secondary) cell with its own count.
 
-    Stacking is only offered when the **secondary** dimension partitions (SPEC §6.1) — stacking
+    Stacking is only offered when the **secondary** dimension partitions (SPEC §6.1): stacking
     a multi-valued dimension implies segments that sum to the bar when they do not.
     """
     warnings: list[str] = []
@@ -487,7 +487,7 @@ def _sort_rows(
     if dim.enum_name is not None:
         order = {value: index for index, value in enumerate(vocab.sort_order(dim.enum_name))}
         # OTHER and any unknown key sort after the clinical order; MISSING stays where sort_order
-        # puts it when it is present as a row (it is not, after T06's intersection — but the
+        # puts it when it is present as a row (it is not, after T06's intersection, but the
         # sentinel is still legitimate on this side of the boundary for display).
         return sorted(
             rows,
@@ -504,7 +504,7 @@ def _sort_rows(
 
 
 def _other_last(rows: list[dict[str, Any]], key: str) -> list[dict[str, Any]]:
-    """OTHER is a rollup residue, not a peer category — it always trails the axis."""
+    """OTHER is a rollup residue, not a peer category: it always trails the axis."""
     kept = [row for row in rows if row.get(key) != "OTHER"]
     other = [row for row in rows if row.get(key) == "OTHER"]
     return kept + other
@@ -529,7 +529,7 @@ def _encoding(
     }
     if dim.enum_name is not None:
         # Include MISSING in the published sort array (SPEC §4's example) even when it is not a
-        # data row — same sentinel, correct side of the query/render boundary.
+        # data row: same sentinel, correct side of the query/render boundary.
         x_channel["sort"] = list(vocab.sort_order(dim.enum_name))
 
     y_channel = {
@@ -650,7 +650,7 @@ def _choropleth(
     annotations: list[dict[str, Any]] = []
     if unmapped:
         # An all-or-nothing rule threw away a working map because one name in twenty did not
-        # place — "South Korea", which ISO spells "Korea, Republic of". So the map is drawn when
+        # place: "South Korea", which ISO spells "Korea, Republic of". So the map is drawn when
         # it represents nearly all of the value, and what it could not place is named with its
         # count rather than quietly dropped. Below that, the table is the honest answer.
         detail = ", ".join(f"{name} ({fmt})" for name, fmt in _unmapped_counts(bucketset, unmapped))
@@ -711,12 +711,12 @@ def _dimension_noun(dim: Dimension) -> str:
     """The dimension as it reads in a title, which is not how it reads on an axis.
 
     `dim.label` is written for an axis, where "Trial phase" is right. In a title it produces
-    "Pembrolizumab Trials by Trial phase" — so the redundant qualifier is dropped and the result
+    "Pembrolizumab Trials by Trial phase", so the redundant qualifier is dropped and the result
     is title-cased. Titles are derived from the plan by code, never model-authored (SPEC §4.1),
     which is exactly why the wording has to be handled here rather than left to a prompt.
     """
     label = dim.label
-    # Only "Trial " is redundant — the subject is already "… Trials". "Study type" keeps its
+    # Only "Trial " is redundant: the subject is already "… Trials". "Study type" keeps its
     # qualifier, because "Trials by Type" says less than "Trials by Study type".
     if label.startswith("Trial ") and len(label) > len("Trial "):
         label = label[len("Trial ") :]
@@ -741,7 +741,7 @@ def _date_of(timestamp: str) -> str:
 
 
 def _metric_unit(metric: Metric) -> str:
-    """Trials or people — the two metrics count different things and a bare number hides which."""
+    """Trials or people: the two metrics count different things and a bare number hides which."""
     return "studies" if metric is Metric.STUDY_COUNT else "participants"
 
 

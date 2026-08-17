@@ -1,4 +1,4 @@
-# T03 — Essie predicate builder and the dimension registry
+# T03: Essie predicate builder and the dimension registry
 
 **Est. 20 min · depends on: T02 · unblocks: T05, T06**
 
@@ -41,7 +41,7 @@ Rules:
   `COVERAGE` are exact aliases and standardized on `COVERAGE`).
 - **`full_match` always emits an `AREA[...]` prefix, and there is no API for emitting one
   without.** T01 measured that a bare `COVERAGE[FullMatch]"Merck Sharp & Dohme LLC"` is
-  valid Essie, returns HTTP 200, and counts **4591** against the correct 1841 — an
+  valid Essie, returns HTTP 200, and counts **4591** against the correct 1841: an
   unscoped full-corpus match that looks like a success. This is the same class of failure as
   `aggFilters=phase:na` returning 0, and the mitigation is the same: make the wrong
   expression unconstructible. `area` is a required positional parameter; assert it is
@@ -55,7 +55,7 @@ Rules:
   MISSING COVERAGE EXPANSION FullMatch DISTANCE ALL`) with a leading backslash per notes
   §2. Values reaching `field_eq`/`full_match` go through it unconditionally.
 - `and_`/`or_` always parenthesise their operands. Never rely on the documented precedence
-  (terms → NOT → AND → OR) — write it explicitly.
+  (terms → NOT → AND → OR): write it explicitly.
 - Use `DISTANCE[...]` with **square brackets** inside Essie; parens leak a Java exception
   (notes §2). If you add a distance helper, add the test that asserts brackets.
 - `aggFilters` appears nowhere in this file or any other. Add a test that greps `app/` for
@@ -63,7 +63,7 @@ Rules:
 
 ## `app/engine/dimensions.py`
 
-One frozen registry row per groupable dimension — SPEC §5.1 verbatim, no additions:
+One frozen registry row per groupable dimension. SPEC §5.1 verbatim, no additions:
 
 ```python
 @dataclass(frozen=True)
@@ -89,20 +89,20 @@ All ten rows from SPEC §5.1: `phase`, `overall_status`, `study_type`, `sponsor_
 
 Note the trap in SPEC §5.1: `lead_sponsor` is `partition=True` (one lead sponsor per
 study, notes §5) even though its vocabulary is open. Open vocabulary and non-partition are
-**independent** axes — do not collapse them into one flag.
+**independent** axes: do not collapse them into one flag.
 
 **`enum_name` and `area` are separate fields for a reason T02 measured.** `/studies/enums`
 exposes a `pieces` list mapping each enum type to the `AREA[]` names it governs, and it is
 **not 1:1**: `Status` governs both `OverallStatus` and `LastKnownStatus`; `AgencyClass`
 governs three. So an enum type name is never usable as an `AREA[]` name. `overall_status`
-is `enum_name="Status"`, `area="OverallStatus"` — and picking `LastKnownStatus` instead
+is `enum_name="Status"`, `area="OverallStatus"`, and picking `LastKnownStatus` instead
 would silently answer a different question (it's the last known status of studies that
 stopped updating, which is the 16% `UNKNOWN` cohort in notes §6.6).
 
 Add a registry-integrity test using `pieces` from the recorded enums fixture: for every
 row with a non-`None` `enum_name`, assert `dim.area` appears in that enum type's `pieces`
 list. This catches an `area`/`enum_name` mismatch at test time instead of as a wrong chart.
-Reading `pieces` is test-only — it stays outside `CTGClient.enums()`'s frozen signature.
+Reading `pieces` is test-only: it stays outside `CTGClient.enums()`'s frozen signature.
 
 ## Tests
 
@@ -124,4 +124,4 @@ exists in a recorded full-study fixture; no `aggFilters` anywhere in `app/`.
 ## Done when
 
 A live `scripts/verify_upstream.py --predicates` run reproduces every count in the notes
-§2 table (within daily drift) using only builder output — no hand-written query strings.
+§2 table (within daily drift) using only builder output: no hand-written query strings.

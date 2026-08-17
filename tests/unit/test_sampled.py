@@ -65,7 +65,7 @@ def sponsor_study(nct: str, name: str) -> dict[str, Any]:
 class Upstream:
     """Serves discovery pages and confirmation counts, and refuses anything unstubbed.
 
-    Discovery and confirmation are deliberately different shapes here — a page request carries no
+    Discovery and confirmation are deliberately different shapes here: a page request carries no
     `filter.advanced` and no `countTotal`; a confirmation carries both a predicate and
     `countTotal=true`. Keying on that split is what lets a test assert the mode never confuses
     a sample frequency for a count.

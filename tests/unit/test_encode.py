@@ -94,7 +94,7 @@ async def test_phase_axis_is_clinically_ordered(settings: Settings, vocab: Vocab
 
 
 async def test_other_rollup_names_count_and_sum(settings: Settings, vocab: Vocabulary) -> None:
-    """The one place T07 can silently drop data — the annotation has to name both."""
+    """The one place T07 can silently drop data: the annotation has to name both."""
     ctx = await a_ctx(settings, vocab, max_buckets=20)
     buckets = [
         Bucket(key=f"S{i:02d}", label=f"Sponsor {i}", value=float(100 - i), exactness="exact")

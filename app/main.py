@@ -41,7 +41,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Warming only. Everything the routes need is assigned below, at construction, because
-        # a serverless runtime may never run lifespan at all — and a service whose requests 500
+        # a serverless runtime may never run lifespan at all, and a service whose requests 500
         # unless a startup hook fired is depending on its host for correctness. A cold
         # /studies/enums must not stop the process from booting either (T02); /health says so,
         # and `VocabularyCache.get` loads on first use regardless.

@@ -9,8 +9,8 @@ the engine works. Two rules follow from that and are enforced here rather than l
   bug or an upstream surprise, and papering over it is how a wrong chart ships.
 
 **Two different questions live here, and conflating them caused four bugs in a row.** The overlap
-note describes the *result* — how a multi-valued field makes studies contribute more than once.
-`bucket_sum` and the truncation note describe the *chart* — which categories a reader is actually
+note describes the *result*: how a multi-valued field makes studies contribute more than once.
+`bucket_sum` and the truncation note describe the *chart*, which categories a reader is actually
 looking at. Truncation moves the second without moving the first, so the two quantities are named
 apart (`result_memberships` versus `plotted_sum`) and each note is handed only the one it means.
 An earlier version passed the full count into a parameter named `memberships` while the local of
@@ -162,7 +162,7 @@ def _overlap_note(
         # Values beyond the cap were never counted, so their memberships do not exist to be
         # added: the difference is not an overlap, it is the missing part. Printing it as one
         # produced "overlap -606", and the zero branch would have manufactured "no study carries
-        # more than one phase" — a claim about the data invented by truncation.
+        # more than one phase": a claim about the data invented by truncation.
         #
         # Narrowing alone does NOT land here: those categories were counted and `omitted_value`
         # kept their memberships, so the overlap stays exact and a disclaimer would be a
@@ -178,7 +178,7 @@ def _overlap_note(
         # A sample can never be shown to have met every corpus label, so `memberships` is a
         # lower bound and the overlap is not computable in *either* direction. Guarding only the
         # negative case left the exact branches to claim "overlap 5", or worse to assert "no
-        # study carries more than one" when the sums happened to match — the same invented claim
+        # study carries more than one" when the sums happened to match: the same invented claim
         # about the data, on the other side of zero.
         return (
             f"{field} is multi-valued, so buckets overlap and do not sum to the total. The "

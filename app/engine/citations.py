@@ -1,7 +1,7 @@
 """Per-bucket citation sampling. SPEC §4.2.
 
 The discipline matters more than the plumbing. A citation that points at the wrong field is
-worse than no citation, because it looks rigorous — especially when upstream synonym expansion
+worse than no citation, because it looks rigorous: especially when upstream synonym expansion
 puts a study in a bucket whose query string never appears in the record.
 
 **Failure semantics are the opposite of the count fan-out.** T06 made a single bucket failure
@@ -28,7 +28,7 @@ ORDERING_ASSUMPTION = (
     "guaranteed stable across requests."
 )
 """There is no default sort upstream, and text fields reject `sort` (notes §3). Saying so
-avoids promising a stability the API cannot give — a citation set that silently reshuffles
+avoids promising a stability the API cannot give: a citation set that silently reshuffles
 between identical requests would erode trust in the numbers next to it."""
 
 # Free-text narrative fields. Citing any of these is the failure mode Rule 2 exists to prevent:
@@ -142,7 +142,7 @@ async def sample_citations(
 ) -> tuple[list[Citation], str]:
     """Sample up to `n` citations for one bucket.
 
-    When `records` is provided, no upstream request is made — that is the T10 path. When it is
+    When `records` is provided, no upstream request is made: that is the T10 path. When it is
     omitted, one projected page is fetched under the bucket predicate.
     """
     if n <= 0 or contributing <= 0:
