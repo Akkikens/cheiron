@@ -6,3 +6,8 @@ docs
 Dockerfile
 .dockerignore
 uv.lock
+
+# Never upload local secrets: vercel deploy ships local files and does NOT honour .gitignore.
+.env
+.env.*
+!.env.example
