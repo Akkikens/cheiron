@@ -27,7 +27,22 @@ cp .env.example .env                     # add OPENAI_API_KEY for natural-langua
 uv run uvicorn app.main:create_app --factory --reload
 ```
 
-It also runs with **no API key at all**, serving the questions the deterministic planner covers:
+Or without a local Python at all — convenience only, and the one instruction here that is
+**not** verified end to end, since no Docker daemon was available while writing it (the wheel
+build and layer contents are verified):
+
+```bash
+docker build -t cheiron .
+docker run --rm -p 8000:8000 -e LLM_ENABLED=false cheiron
+```
+
+Then open **<http://localhost:8000>** for a demo UI that renders whatever the API returns, or
+POST to `/analyze` directly. FastAPI's generated docs are at `/docs`.
+
+It also runs with **no API key at all**. The deterministic planner covers eleven question
+shapes — phase, status, trend, country, sponsor, sponsor class, study type, intervention type,
+condition, enrollment size, and co-occurrence — so every example in §4 is reproducible in that
+mode:
 
 ```bash
 LLM_ENABLED=false uv run uvicorn app.main:create_app --factory
@@ -161,9 +176,9 @@ beyond `encoding` + `data`.
 
 ## 4. Example runs
 
-Real output from live runs on 2026-08-16, trimmed for length. The first four are reproducible
-with `LLM_ENABLED=false`; the network graph, histogram, and scatter need intents the
-deterministic planner does not emit, so their plans were supplied directly (see §8).
+Real output from live runs on 2026-08-16, trimmed for length. All of them run with
+`LLM_ENABLED=false` — the deterministic planner reaches every one — except the scatter, whose
+intent only the model emits.
 
 ### 4.1 Distribution — and numbers that legitimately do not add up
 
@@ -415,6 +430,13 @@ is fifty round trips and 25–50 seconds, which does not fit on a request path.
 
 ## 6. Visualization coverage
 
+The demo at `/` is the shortest way to see all of this: it renders every chart type from
+`encoding` + `data` alone, in vanilla JS with inline SVG and no dependencies. That is deliberate
+— a test asserts its renderer map covers every `ChartType` and that no renderer branches on a
+drug name, a condition, or a dimension key, so anything it cannot draw is a gap in the
+specification rather than in the page.
+
+
 All ten types in the contract: `bar_chart`, `grouped_bar_chart`, `stacked_bar_chart`,
 `time_series`, `histogram`, `scatter_plot`, `choropleth_map`, `network_graph`, `table`, `kpi`.
 Chart choice is a deterministic function of
@@ -458,9 +480,14 @@ Three more that shaped the implementation:
 
 4. **`aggFilters=phase:na` returns 0, silently.** A silent zero is the worst possible failure for
    an aggregation engine.
-5. **`NA` is not missing.** 234,433 studies carry an explicit `"NA"` phase; 141,903 have no
+5. **Country names are upstream's, not ISO's.** A live geography query returned a table instead
+   of a map because one name in twenty had no code — "South Korea", which ISO spells "Korea,
+   Republic of". The map is now generated from the corpus's own 226 distinct values, keys
+   included: a curly apostrophe in "Côte d'Ivoire", and a genuine trailing space in "Bonaire,
+   Saint Eustatius and Saba " that would break the lookup if tidied away.
+6. **`NA` is not missing.** 234,433 studies carry an explicit `"NA"` phase; 141,903 have no
    `phases` field at all. Two distinct buckets, never merged.
-6. **The 16% nobody counts.** 95,740 studies have status `UNKNOWN` — they stopped updating.
+7. **The 16% nobody counts.** 95,740 studies have status `UNKNOWN` — they stopped updating.
    `LastKnownStatus` is populated for exactly that cohort and nobody else (`MISSING` = 502,950
    of 598,690; `UNKNOWN AND NOT MISSING` = 95,740, so the overlap is total). Their last
    self-reported state was `RECRUITING` 54,030, `NOT_YET_RECRUITING` 23,607,
@@ -513,6 +540,8 @@ particular changed real behaviour rather than style.
   the LLM planner's repair loop, fallback, and caching are all exercised through an injected
   completer. The published schema is asserted against the documented strict constraint set, so
   the first live call should be a confirmation rather than a discovery — but it has not been made.
+- **The demo bundles no map topology**, so a choropleth renders there as a ranked list. The spec
+  carries ISO-3166 alpha-3 codes precisely so a real renderer can join them to one.
 - **Enrollment bin edges are fixed, not adaptive.** They suit oncology-scale trials; a corpus-wide
   question would be better served by quantile bins computed from the result set.
 - **Caches are in-process.** Correct for a stateless service, but a shared store would make the
