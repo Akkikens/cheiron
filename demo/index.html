@@ -42,8 +42,12 @@
 
   /* --- masthead ------------------------------------------------------------ */
   .masthead {
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
-    padding: 22px 32px 16px; border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    padding: 20px 32px 18px; border-bottom: 1px solid var(--rule);
+    /* The same measure the content uses: rail (312) + sheet padding (32) + sheet (1080).
+       Without it the byline flew to the far edge of a wide display and left a gulf in the
+       middle, which reads as a broken layout rather than as space. */
+    max-width: 1456px;
   }
   .wordmark {
     display: flex; align-items: center; gap: 10px;
@@ -53,12 +57,14 @@
   .wordmark img { width: 30px; height: 30px; display: block; }
   .wordmark .name { display: inline; }
   .wordmark .dot { color: var(--ramp-hi); margin-left: 1px; }
-  .tagline { font: italic 15px/1 var(--serif); color: var(--muted); }
+  .tagline { font: italic 15px/1.3 var(--serif); color: var(--muted); margin: 0; }
   .masthead .by {
-    margin-left: auto; text-align: right; font: 500 11px/1.6 var(--mono);
-    letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin-left: auto; margin-bottom: 0; text-align: right;
+    font: 400 11px/1.3 var(--mono); letter-spacing: .08em; color: var(--muted);
   }
-  .masthead .by b { display: block; font-weight: 600; color: var(--ink-2); }
+  /* One line, and quieter than the wordmark. Two lines of uppercase mono sat heavier than the
+     product name it was standing next to. */
+  .masthead .by b { font-weight: 600; color: var(--ink-2); letter-spacing: .1em; }
 
   /* --- shell --------------------------------------------------------------- */
   .shell { display: grid; grid-template-columns: 312px minmax(0, 1fr); }
@@ -179,6 +185,9 @@
     border-top: 1px solid var(--rule); margin: 0 32px; padding: 20px 0 40px;
     display: flex; gap: 24px; flex-wrap: wrap; align-items: baseline;
     font: 12px/1.6 var(--mono); color: var(--muted);
+    /* Same measure as the masthead, less its padding, so the footer's right edge lands under
+       the right edge of the cards instead of at the far side of the window. */
+    max-width: 1392px;
   }
   .colophon b { color: var(--ink-2); font-weight: 600; }
   .colophon .links { margin-left: auto; display: flex; gap: 18px; flex-wrap: wrap; }
@@ -213,7 +222,7 @@
 <header class="masthead">
   <h1 class="wordmark"><a href="/" aria-label="Cheiron home"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26"><span class="name">cheiron<span class="dot">.</span></span></a></h1>
   <p class="tagline">Ask about clinical trials. Every number cites its source.</p>
-  <p class="by"><b>Akshay Kalapgar</b>backend assessment · clinicaltrials.gov live</p>
+  <p class="by"><b>AKSHAY KALAPGAR</b> · backend take-home</p>
 </header>
 
 <main class="shell">
