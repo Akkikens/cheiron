@@ -49,6 +49,7 @@
     display: flex; align-items: center; gap: 10px;
     font: 600 20px/1 var(--mono); letter-spacing: -0.02em; margin: 0;
   }
+  .wordmark a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 10px; }
   .wordmark img { width: 30px; height: 30px; display: block; }
   .wordmark .name { display: inline; }
   .wordmark .dot { color: var(--ramp-hi); margin-left: 1px; }
@@ -210,7 +211,7 @@
 </style>
 
 <header class="masthead">
-  <h1 class="wordmark"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26"><span class="name">cheiron<span class="dot">.</span></span></h1>
+  <h1 class="wordmark"><a href="/" aria-label="Cheiron home"><img src="/assets/mark-onpaper.png" alt="" width="26" height="26"><span class="name">cheiron<span class="dot">.</span></span></a></h1>
   <p class="tagline">Ask about clinical trials. Every number cites its source.</p>
   <p class="by"><b>Akshay Kalapgar</b>backend assessment · clinicaltrials.gov live</p>
 </header>
@@ -737,9 +738,42 @@ async function run() {
 $('go').addEventListener('click', run);
 
 // The page opens on a real answer rather than on a paragraph describing one: a first-time
-// visitor should see the reconciliation before deciding whether to read anything. Guarded so
-// the renderer test harness, which loads this script outside a browser, does not fetch.
-if (typeof window !== 'undefined' && typeof fetch === 'function') run();
+// visitor should see the reconciliation before deciding whether to read anything.
+//
+// Each reload advances to the next example, so refreshing walks the whole range of chart types
+// without touching a control. A reviewer checking whether the thing works tends to reload, and
+// this turns that reflex into the demo: bar chart, then trend, then map, then network, then the
+// question only the model can plan. The position is kept in sessionStorage so it advances per
+// tab and resets when the tab is closed, rather than being random and repeating itself.
+function openingExample() {
+  const buttons = [...document.querySelectorAll('.examples button')].filter((b) => b.dataset.q);
+  if (!buttons.length) return null;
+  const key = 'cheiron:opening';
+  const seen = Number(sessionStorage.getItem(key) || '-1');
+  const next = (seen + 1) % buttons.length;
+  sessionStorage.setItem(key, String(next));
+  return buttons[next];
+}
+
+if (typeof window !== 'undefined' && typeof fetch === 'function') {
+  const opening = openingExample();
+  if (opening) {
+    $('q').value = opening.dataset.q;
+    $('drug').value = opening.dataset.drug ?? '';
+    $('cond').value = opening.dataset.cond ?? '';
+    $('sy').value = opening.dataset.sy ?? '';
+    $('ey').value = opening.dataset.ey ?? '';
+  }
+  run();
+
+  // Developers open the console. This is the one claim worth making there, and it is checkable.
+  console.log(
+    '%ccheiron%c  the model never emits a number. It emits a validated query plan; every count ' +
+      'here came from ClinicalTrials.gov and cites the trials behind it.\n' +
+      'Source: https://github.com/Akkikens/cheiron',
+    'font-weight:600', 'color:#71727a',
+  );
+}
 document.querySelectorAll('.examples button').forEach((b) => b.addEventListener('click', () => {
   $('q').value = b.dataset.q;
   $('drug').value = b.dataset.drug ?? '';

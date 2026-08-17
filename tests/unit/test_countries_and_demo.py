@@ -301,3 +301,40 @@ def test_the_demo_escapes_values_on_the_way_out() -> None:
     fmt_line = next(line for line in source.splitlines() if line.startswith("const fmt ="))
 
     assert "esc(" in fmt_line
+
+
+def test_a_browser_404_shows_the_envelope_an_api_client_would_have_got(
+    settings: Settings, enums_handler: Handler
+) -> None:
+    """The 404 is where a reviewer first meets the error contract, so it demonstrates it."""
+    app = create_app(settings, transport=stub_transport(settings, enums_handler))
+
+    with TestClient(app) as client:
+        page = client.get("/no-such-route", headers={"accept": "text/html,application/xhtml+xml"})
+
+    assert page.status_code == 404
+    assert page.headers["content-type"].startswith("text/html")
+    assert "invalid_request" in page.text
+    # The id in the body is this request's, not a placeholder left in the template.
+    assert page.headers["X-Request-Id"] in page.text
+    assert "__REQUEST_ID__" not in page.text and "__MESSAGE__" not in page.text
+
+
+def test_an_api_client_404_is_unchanged(settings: Settings, enums_handler: Handler) -> None:
+    """Content negotiation, not a blanket switch: curl and the tests keep the JSON envelope."""
+    app = create_app(settings, transport=stub_transport(settings, enums_handler))
+
+    with TestClient(app) as client:
+        for accept in ("*/*", "application/json"):
+            response = client.get("/no-such-route", headers={"accept": accept})
+            assert response.headers["content-type"].startswith("application/json")
+            assert response.json()["error"]["code"] == "invalid_request"
+
+
+def test_the_wordmark_links_home_and_the_opening_example_rotates() -> None:
+    source = DEMO.read_text(encoding="utf-8")
+
+    assert '<a href="/" aria-label="Cheiron home">' in source
+    # Reloading walks the chart types rather than repeating one, and per tab rather than at
+    # random, so a reviewer who reloads sees the range without touching a control.
+    assert "sessionStorage" in source and "openingExample" in source

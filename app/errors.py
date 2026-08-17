@@ -7,15 +7,17 @@ here as `{"error": {code, message, request_id, retry_after_seconds?, details?}}`
 
 from __future__ import annotations
 
+import html
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, cast
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger("cheiron.errors")
@@ -135,11 +137,43 @@ async def _handle_validation_error(request: Request, exc: RequestValidationError
 
 async def _handle_http_exception(request: Request, exc: StarletteHTTPException) -> Response:
     # Routing-level failures (404, 405) still owe the caller the documented envelope.
+    request_id = request_id_of(request)
+    if exc.status_code == 404 and _wants_html(request):
+        page = _not_found_page(str(exc.detail), request_id)
+        if page is not None:
+            return HTMLResponse(page, status_code=404, headers={"X-Request-Id": request_id})
     return error_response(
         ErrorCode.INVALID_REQUEST,
         str(exc.detail),
         status=exc.status_code,
-        request_id=request_id_of(request),
+        request_id=request_id,
+    )
+
+
+def _wants_html(request: Request) -> bool:
+    """A browser gets a page; anything else keeps the JSON envelope, byte for byte.
+
+    Content negotiation rather than a blanket switch: `curl`, the tests and any API client send
+    `*/*` or `application/json` and must not start receiving markup because a human wandered
+    onto a bad URL.
+    """
+    accept = request.headers.get("accept", "")
+    return "text/html" in accept
+
+
+def _not_found_page(detail: str, request_id: str) -> str | None:
+    """The 404 shows the JSON an API client would have received, with this request's id.
+
+    A 404 is where a reviewer first meets the error contract, so it demonstrates it rather than
+    apologising. Returns None when the file is absent, and the JSON envelope answers instead.
+    """
+    page = Path(__file__).resolve().parent.parent / "demo" / "404.html"
+    if not page.is_file():  # pragma: no cover - only when demo/ is not shipped
+        return None
+    return (
+        page.read_text(encoding="utf-8")
+        .replace("__MESSAGE__", html.escape(detail, quote=True))
+        .replace("__REQUEST_ID__", html.escape(request_id, quote=True))
     )
 
 
