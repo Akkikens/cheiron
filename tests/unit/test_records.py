@@ -466,3 +466,69 @@ async def test_record_mode_narrows_without_ever_claiming_it_capped(settings: Set
     # The three omitted sponsors carry 4 studies each, and nothing is lost from the arithmetic.
     assert bucketset.omitted_value == 12.0
     assert bucketset.bucket_sum + int(bucketset.omitted_value) == 20
+
+
+async def test_two_casings_of_one_intervention_are_one_bucket(settings: Settings) -> None:
+    """Record mode split them only cosmetically, but the split was still wrong twice over.
+
+    One drug drew as two bars, and the same question returned different labels either side of the
+    2,000-study threshold, where the sampled path folds them because upstream matching is
+    case-insensitive.
+    """
+    studies = [_study(f"NCT{i:08d}", interventions=["Placebo"]) for i in range(6)] + [
+        _study(f"NCT1{i:07d}", interventions=["placebo"]) for i in range(4)
+    ]
+    upstream = PagingUpstream(studies)
+    ctx = await records_context(settings, upstream)
+    plan = distribution_plan(group_by=GroupBy(dimension="intervention_name"))
+
+    bucketset = records.aggregate(studies, plan, REGISTRY["intervention_name"], ctx)
+
+    assert [bucket.key for bucket in bucketset.buckets] == ["Placebo"]
+    assert bucketset.buckets[0].value == 10.0
+    assert any("capitalisation" in assumption for assumption in ctx.assumptions)
+
+
+async def test_a_study_listing_both_casings_is_counted_once(settings: Settings) -> None:
+    """Folding must not rebuild the double count inside a single bucket.
+
+    A trial can list "Placebo" and "placebo" as two separate arms. Folding the keys without
+    deduplicating them per study would credit that one trial twice to the merged bucket, which is
+    the exact arithmetic the fold exists to remove.
+    """
+    studies = [_study("NCT00000001", interventions=["Placebo", "placebo"])]
+    upstream = PagingUpstream(studies)
+    ctx = await records_context(settings, upstream)
+    plan = distribution_plan(group_by=GroupBy(dimension="intervention_name"))
+
+    bucketset = records.aggregate(studies, plan, REGISTRY["intervention_name"], ctx)
+
+    assert [bucket.key for bucket in bucketset.buckets] == ["Placebo"]
+    assert bucketset.buckets[0].value == 1.0
+
+
+async def test_the_network_draws_one_node_per_treatment_not_one_per_casing(
+    settings: Settings,
+) -> None:
+    """What a reviewer sees first: `topiramate` and `Topiramate` as two dots on one graph."""
+    studies = [
+        _study(f"NCT{i:08d}", conditions=["Migraine"], interventions=["Topiramate"])
+        for i in range(5)
+    ] + [
+        _study(f"NCT1{i:07d}", conditions=["Migraine"], interventions=["topiramate"])
+        for i in range(4)
+    ]
+    upstream = PagingUpstream(studies)
+    ctx = await records_context(settings, upstream)
+    plan = distribution_plan(
+        intent=Intent.NETWORK,
+        filters=StudyFilter(condition="Migraine"),
+        group_by=GroupBy(dimension="intervention_name"),
+    )
+
+    viz, _ = network.build(studies, plan, ctx)
+
+    labels = [node["label"] for node in viz.data["nodes"]]
+    assert sorted(labels) == ["Migraine", "Topiramate"]
+    edge = next(e for e in viz.data["edges"])
+    assert edge["weight"] == 9, "both casings contribute to the one edge"
