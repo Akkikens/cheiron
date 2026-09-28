@@ -40,7 +40,12 @@ from app.engine.citations import (
     sample_citations,
 )
 from app.engine.context import RunContext
-from app.engine.dimensions import Dimension
+from app.engine.dimensions import (
+    Dimension,
+    canonical_case,
+    case_merge_assumption,
+    is_free_text,
+)
 from app.engine.modes.counts import _gather_citations, _gather_or_fail
 from app.engine.modes.records import membership_keys
 from app.models.plan import AnalysisPlan
@@ -98,6 +103,12 @@ async def run(
             sample_coverage=round(sample_size / total, 3) if total else None,
             warnings=warnings,
         )
+
+    # Fold casings before choosing candidates, not after. The confirmation below is
+    # case-insensitive upstream, so confirming `Placebo` and `placebo` separately returned the
+    # full count twice and the chart claimed double the studies that exist.
+    if is_free_text(dim):
+        frequencies, _ = _fold_frequencies(frequencies, dim, ctx)
 
     requested_k = ctx.options.max_buckets
     candidates, k_warning = _candidates(frequencies, requested_k, ctx)
@@ -209,6 +220,26 @@ async def _discover(
         token = page.next_page_token
 
     return frequencies, examined
+
+
+def _fold_frequencies(
+    frequencies: Counter[str], dim: Dimension, ctx: RunContext
+) -> tuple[Counter[str], int]:
+    """Collapse labels that differ only in capitalisation, and disclose it when any did."""
+    mapping, merged = canonical_case(frequencies)
+    if not merged:
+        return frequencies, 0
+
+    folded: Counter[str] = Counter()
+    for label, count in frequencies.items():
+        folded[mapping[label]] += count
+
+    example = next(
+        (display for label, display in mapping.items() if label != display),
+        None,
+    )
+    ctx.assumptions.append(case_merge_assumption(f"{dim.key} label(s)", merged, example))
+    return folded, merged
 
 
 def _candidates(
