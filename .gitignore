@@ -38,5 +38,5 @@ data/raw/
 .vercel
 .env*
 
-# --- local scratch ---
-.notes/
+# --- personal, not part of the submission ---
+DEMO-SCRIPT.md
